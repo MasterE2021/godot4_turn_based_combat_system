@@ -28,10 +28,17 @@ var enemy_characters: Array[Character] = []
 var turn_queue: Array = []
 var current_turn_character: Character = null
 
+## 当前选中的技能
+var current_selected_skill : SkillData = null
+
 # 信号
 signal battle_state_changed(new_state)
 signal turn_changed(character)
 signal battle_ended(is_victory)
+# 添加额外信号用于与UI交互
+signal player_action_required(character) # 通知UI玩家需要行动
+signal enemy_action_executed(attacker, target, damage) # 敌人执行了行动
+signal character_stats_changed(character) # 角色状态变化
 
 func _ready():
 	set_state(BattleState.IDLE)
@@ -61,14 +68,13 @@ func set_state(new_state: BattleState):
 			next_turn()
 			
 		BattleState.PLAYER_TURN:
-			# 激活玩家输入界面
+			# 通知UI需要玩家输入
 			print("玩家回合：等待输入...")
-			show_action_ui(true)  # 显示行动按钮
+			player_action_required.emit(current_turn_character)
 			
 		BattleState.ENEMY_TURN:
 			# 执行敌人AI
 			print("敌人回合：", current_turn_character.character_name, " 思考中...")
-			show_action_ui(false)  # 隐藏行动按钮
 			# 延迟一下再执行AI，避免敌人行动过快
 			await get_tree().create_timer(1.0).timeout
 			execute_enemy_ai()
@@ -132,7 +138,7 @@ func register_characters():
 	
 	print("已注册 ", player_characters.size(), " 名玩家角色和 ", enemy_characters.size(), " 名敌人")
 
-# 玩家选择行动
+# 玩家选择行动 - 由BattleScene调用
 func player_select_action(action_type: String, target = null):
 	if current_state != BattleState.PLAYER_TURN:
 		return
@@ -192,8 +198,12 @@ func execute_attack(attacker: Character, target: Character):
 	# 简单的伤害计算
 	var damage = target.take_damage(attacker.attack - target.defense)
 	
-	# 更新UI信息
-	update_battle_info(attacker.character_name + " 对 " + target.character_name + " 造成了 " + str(damage) + " 点伤害!")
+	# 发出敌人行动执行信号
+	if enemy_characters.has(attacker):
+		enemy_action_executed.emit(attacker, target, damage)
+		
+	# 发出角色状态变化信号
+	character_stats_changed.emit(target)
 
 	# 显示伤害数字
 	spawn_damage_number(target.global_position, damage, Color.RED)
@@ -204,12 +214,41 @@ func execute_attack(attacker: Character, target: Character):
 func execute_defend(character: Character):
 	if character == null:
 		return
-		
+
 	print(character.character_name, " 选择防御，受到的伤害将减少")
 	character.set_defending(true)
 	
-	# 更新UI信息
-	update_battle_info(character.character_name + " 进入防御状态，将受到减少的伤害!")
+	# 发出角色状态变化信号
+	character_stats_changed.emit(character)
+
+## 执行技能 - 由BattleScene调用
+func execute_skill(caster: Character, targets: Array[Character], skill_data: SkillData) -> void:
+	print(caster.character_name + "使用技能：" + skill_data.skill_name)
+
+	# 技能的"前奏"——检查MP并消耗
+	if !check_and_consume_mp(caster, skill_data):
+		print("错误：MP不足，无法释放技能！")
+		return
+	
+	# 发出角色状态变化信号
+	character_stats_changed.emit(caster)
+	
+	# 根据技能类型执行不同的效果
+	match skill_data.effect_type:
+		SkillData.EffectType.DAMAGE:
+			_execute_damage_skill(caster, targets, skill_data)
+		SkillData.EffectType.HEAL:
+			_execute_heal_skill(caster, targets, skill_data)
+		SkillData.EffectType.APPLY_STATUS:
+			_execute_status_skill(caster, targets, skill_data)
+		SkillData.EffectType.CONTROL:
+			_execute_control_skill(caster, targets, skill_data)
+		SkillData.EffectType.SPECIAL:
+			_execute_special_skill(caster, targets, skill_data)
+		_:
+			print("未处理的技能效果类型： ", skill_data.effect_type)
+	# 技能执行完毕，进入行动执行状态
+	set_state(BattleState.ACTION_EXECUTION)
 
 # 构建回合队列
 func build_turn_queue():
@@ -301,16 +340,6 @@ func remove_character(character: Character):
 	print(character.character_name, " 已从战斗中移除")
 	check_battle_end_condition()
 
-func show_action_ui(visible: bool):
-	var ui = get_node_or_null("../BattleUI/ActionPanel")
-	if ui:
-		ui.visible = visible
-
-func update_battle_info(text: String):
-	var info_label = get_node_or_null("../BattleUI/BattleInfo")
-	if info_label:
-		info_label.text = text
-
 ## 生成伤害数字
 func spawn_damage_number(position: Vector2, amount: int, color : Color) -> void:
 	var damage_number = DAMAGE_NUMBER_SCENE.instantiate()
@@ -318,12 +347,221 @@ func spawn_damage_number(position: Vector2, amount: int, color : Color) -> void:
 	damage_number.global_position = position + Vector2(0, -50)
 	damage_number.show_number(str(amount), color)
 
+# 获取有效的敌方目标列表（过滤掉已倒下的角色）
+func get_valid_enemy_targets() -> Array[Character]:
+	var valid_targets: Array[Character] = []
+	
+	for enemy in enemy_characters:
+		if enemy.is_alive():
+			valid_targets.append(enemy)
+	
+	return valid_targets
+
+# 获取有效的友方目标列表
+# include_self: 是否包括施法者自己
+func get_valid_ally_targets(include_self: bool = false) -> Array[Character]:
+	var valid_targets: Array[Character] = []
+	
+	for ally in player_characters:
+		if ally.is_alive() && (include_self || ally != current_turn_character):
+			valid_targets.append(ally)
+	
+	return valid_targets
+	
+func get_targets_for_skill(skill: SkillData) -> Array[Character]:
+	var targets: Array[Character] = []
+	
+	match skill.target_type:
+		SkillData.TargetType.NONE:
+			# 无目标技能
+			pass
+			
+		SkillData.TargetType.SELF:
+			# 自身为目标
+			targets = [current_turn_character]
+			
+		SkillData.TargetType.ENEMY_SINGLE:
+			# 选择单个敌人（在实际游戏中应由玩家交互选择）
+			# 此处简化为自动选择第一个活着的敌人
+			var valid_targets = get_valid_enemy_targets()
+			if !valid_targets.is_empty():
+				targets = [valid_targets[0]]
+				
+		SkillData.TargetType.ENEMY_ALL:
+			# 所有活着的敌人
+			targets = get_valid_enemy_targets()
+			
+		SkillData.TargetType.ALLY_SINGLE:
+			# 选择单个友方（不包括自己）
+			# 简化为自动选择第一个活着的友方
+			var valid_targets = get_valid_ally_targets(false)
+			if !valid_targets.is_empty():
+				targets = [valid_targets[0]]
+				
+		SkillData.TargetType.ALLY_ALL:
+			# 所有活着的友方（不包括自己）
+			targets = get_valid_ally_targets(false)
+			
+		SkillData.TargetType.ALLY_SINGLE_INC_SELF:
+			# 选择单个友方（包括自己）
+			# 简化为选择自己
+			targets = [current_turn_character]
+			
+		SkillData.TargetType.ALLY_ALL_INC_SELF:
+			# 所有活着的友方（包括自己）
+			targets = get_valid_ally_targets(true)
+	
+	return targets
+
+# 判断角色是否为玩家角色
+func is_player_character(character: Character) -> bool:
+	return player_characters.has(character)
+
+# MP检查和消耗
+func check_and_consume_mp(caster: Character, skill: SkillData) -> bool:
+	if caster.current_mp < skill.mp_cost:
+		print_rich("[color=red]魔力不足，法术施放失败！[/color]")
+		return false
+	
+	caster.use_mp(skill.mp_cost)
+	return true
+
+func calculate_skill_damage(caster: Character, target: Character, skill: SkillData) -> int:
+	# 基础伤害计算
+	var base_damage = skill.power + (caster.magic_attack * 0.8)
+	
+	# 考虑目标防御
+	var damage_after_defense = base_damage - (target.magic_defense * 0.5)
+	
+	# 加入随机浮动因素 (±10%)
+	var random_factor = randf_range(0.9, 1.1)
+	var final_damage = damage_after_defense * random_factor
+	
+	# 确保伤害至少为1
+	return max(1, round(final_damage))
+
+func play_cast_animation(caster: Character) -> void:
+	var tween = create_tween()
+	# 角色短暂发光效果
+	tween.tween_property(caster, "modulate", Color(1.5, 1.5, 1.5), 0.2)
+	tween.tween_property(caster, "modulate", Color(1, 1, 1), 0.2)
+	
+	# 这里可以播放施法音效
+	# AudioManager.play_sfx("spell_cast")
+
+func play_heal_cast_animation(caster: Character) -> void:
+	play_cast_animation(caster)
+
+# 播放命中动画
+func play_hit_animation(target: Character):
+	var tween = create_tween()
+	
+	# 目标变红效果
+	tween.tween_property(target, "modulate", Color(2, 0.5, 0.5), 0.1)
+	
+	# 抖动效果
+	var original_pos = target.position
+	tween.tween_property(target, "position", original_pos + Vector2(5, 0), 0.05)
+	tween.tween_property(target, "position", original_pos - Vector2(5, 0), 0.05)
+	tween.tween_property(target, "position", original_pos, 0.05)
+	
+	# 恢复正常颜色
+	tween.tween_property(target, "modulate", Color(1, 1, 1), 0.1)
+	
+	# 这里可以播放命中音效
+	# AudioManager.play_sfx("hit_impact")
+
+func calculate_skill_healing(caster: Character, target: Character, skill: SkillData) -> int:
+	# 治疗量通常更依赖施法者的魔法攻击力
+	var base_healing = skill.power + (caster.magic_attack * 1.0)
+	
+	# 随机浮动 (±5%)
+	var random_factor = randf_range(0.95, 1.05)
+	var final_healing = base_healing * random_factor
+	
+	return max(1, round(final_healing))
+
+# 治疗效果视觉反馈
+func play_heal_effect(target: Character):
+	var tween = create_tween()
+	
+	# 目标变绿效果（表示恢复）
+	tween.tween_property(target, "modulate", Color(0.7, 1.5, 0.7), 0.2)
+	
+	# 上升的小动画，暗示"提升"
+	var original_pos = target.position
+	tween.tween_property(target, "position", original_pos - Vector2(0, 5), 0.2)
+	tween.tween_property(target, "position", original_pos, 0.1)
+	
+	# 恢复正常颜色
+	tween.tween_property(target, "modulate", Color(1, 1, 1), 0.2)
+	
 ## 订阅角色信号
 func _subscribe_to_character_signals(character : Character) -> void:
 	if !character.character_died.is_connected(_on_character_died):
 		character.character_died.connect(_on_character_died)
 	
 	#TODO 链接其他信号
+
+# 伤害类技能
+func _execute_damage_skill(caster: Character, targets: Array[Character], skill: SkillData):
+	for target in targets:
+		if target.current_hp <= 0:
+			continue
+		
+		# 计算基础伤害
+		var base_damage = calculate_skill_damage(caster, target, skill)
+		
+		# 应用伤害
+		var damage_dealt = target.take_damage(base_damage)
+		
+		# 显示伤害数字
+		spawn_damage_number(target.global_position, damage_dealt, Color.RED)
+		
+		# 发出角色状态变化信号
+		character_stats_changed.emit(target)
+		
+		print(target.character_name + " 受到 " + str(damage_dealt) + " 点伤害")
+
+# 治疗类技能
+func _execute_heal_skill(caster: Character, targets: Array[Character], skill: SkillData) -> void:
+	# 播放施法者的施法动画（可以与伤害技能不同，更温和）
+	play_heal_cast_animation(caster)
+
+	# 等待短暂时间
+	await get_tree().create_timer(0.3).timeout	
+
+	for target in targets:
+		if target.current_hp <= 0:  # 不能治疗已死亡的角色
+			print("%s 已倒下，无法接受治疗。" % target.character_name)
+			continue
+		
+		# 计算治疗量
+		var healing = calculate_skill_healing(caster, target, skill)
+		
+		# 播放治疗效果动画
+		play_heal_effect(target)
+
+		# 应用治疗
+		var actual_healed = target.heal(healing)
+		
+		# 显示治疗数字
+		spawn_damage_number(target.global_position, actual_healed, Color.GREEN)
+		
+		# 发出角色状态变化信号
+		character_stats_changed.emit(target)
+		
+		print_rich("[color=green]%s 恢复了 %d 点生命值！[/color]" % [target.character_name, actual_healed])
+
+# 状态类技能
+func _execute_status_skill(caster: Character, targets: Array[Character], skill: SkillData) -> void:
+	pass
+
+func _execute_control_skill(caster: Character, targets: Array[Character], skill: SkillData) -> void:
+	pass
+
+func _execute_special_skill(caster: Character, targets: Array[Character], skill: SkillData) -> void:
+	pass
 
 # 角色死亡信号处理函数
 func _on_character_died(character: Character) -> void:
