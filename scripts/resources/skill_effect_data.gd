@@ -93,12 +93,8 @@ func _get_attribute_modify_description() -> String:
 ## 获取伤害效果描述
 func _get_damage_description() -> String:
 	var amount = damage_amount
-	var element_type = damage_element
-	
-	var element_name = ""
-	element_name = ElementTypes.get_element_name(element_type)
-	
-	return "造成 %d 点%s伤害" % [amount, element_name]
+
+	return "造成 %d 点伤害" % [amount]
 
 ## 获取治疗效果描述
 func _get_heal_description() -> String:
