@@ -38,7 +38,7 @@ var action_categories: Array[String] = ["any_action"] 			## 所属行动类别
 #endregion
 
 ## 检查是否能施放技能
-func can_cast(caster_current_mp: int) -> bool:
+func can_cast(caster_current_mp: float) -> bool:
 	return caster_current_mp >= mp_cost
 
 ## 获得技能完整描述
