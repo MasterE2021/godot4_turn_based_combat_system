@@ -9,12 +9,8 @@
 script = ExtResource("1_prr5c")
 character_name = "勇者"
 description = "一位勇敢的冒险者，善于使用剑术和基础魔法。"
-max_hp = 120
-current_hp = 120
-max_mp = 60
-current_mp = 60
-attack = 15
-defense = 10
-speed = 10
+element = 0
+basic_attack_skill_id = &""
+defend_skill_id = &"defend"
 skills = Array[ExtResource("2_l2ikc")]([ExtResource("3_ylfyt"), ExtResource("4_m1y3i")])
 color = Color(0.2, 0.4, 0.8, 1)
