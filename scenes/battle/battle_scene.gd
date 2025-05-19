@@ -1,9 +1,10 @@
 extends Node2D
+class_name BattleScene
 
 @onready var battle_manager: BattleManager = %BattleManager
 
 # UI引用
-@onready var battle_info_label : Label = $BattleUI/BattleInfo
+@onready var battle_info_label : RichTextLabel = $BattleUI/BattleInfo
 @onready var skill_select_menu: SkillSelectMenu = $BattleUI/SkillSelectMenu
 @onready var target_selection_menu: TargetSelectionMenu = $BattleUI/TargetSelectionMenu
 @onready var action_menu: ActionMenu = $BattleUI/ActionMenu
@@ -48,8 +49,7 @@ func _ready() -> void:
 	battle_manager.battle_ended.connect(_on_battle_ended)
 	battle_manager.player_action_required.connect(_on_player_action_required)
 	battle_manager.enemy_action_executed.connect(_on_enemy_action_executed)
-	battle_manager.character_stats_changed.connect(_on_character_stats_changed)
-	
+
 	# 启动战斗
 	battle_manager.start_battle()
 
@@ -91,16 +91,11 @@ func _on_player_action_required(character: Character) -> void:
 func _on_enemy_action_executed(attacker: Character, target: Character, damage: int) -> void:
 	update_battle_info(attacker.character_name + " 对 " + target.character_name + " 造成了 " + str(damage) + " 点伤害!")
 
-func _on_character_stats_changed(character: Character) -> void:
-	# 更新角色状态显示
-	# 此处只是示例，实际实现需要根据UI设计来
-	pass
-
 # UI信号处理函数
 func _on_action_menu_attack_pressed() -> void:
 	if battle_manager.current_state == BattleManager.BattleState.PLAYER_TURN:
 		# 选择第一个存活的敌人作为目标
-		var valid_targets = battle_manager.get_valid_enemy_targets()
+		var valid_targets = battle_manager.get_valid_enemy_targets(battle_manager.current_turn_character)
 		if !valid_targets.is_empty():
 			var target = valid_targets[0] # 这里简化为直接选择第一个敌人
 			battle_manager.player_select_action("attack", target)
@@ -124,85 +119,39 @@ func _on_skill_selected(skill: SkillData) -> void:
 	
 	# 根据技能目标类型决定下一步操作
 	match skill.target_type:
-		SkillData.TargetType.SELF:
-			# 自身技能无需选择目标
-			battle_manager.execute_skill(
-				battle_manager.current_turn_character, 
-				[battle_manager.current_turn_character], 
-				skill
-			)
-			# 设置为行动执行状态并最终转入回合结束
-			battle_manager.set_state(BattleManager.BattleState.ROUND_END)
+		SkillData.TargetType.SELF, \
+		SkillData.TargetType.ENEMY_ALL, \
+		SkillData.TargetType.ALLY_ALL, \
+		SkillData.TargetType.ALLY_ALL_INC_SELF:
+			# 自动目标技能，直接执行
+			battle_manager.execute_skill(battle_manager.current_turn_character, skill)
 			
 		SkillData.TargetType.ENEMY_SINGLE:
 			# 显示敌人目标选择菜单
-			var valid_targets = battle_manager.get_valid_enemy_targets()
-			if !valid_targets.is_empty():
+			var valid_targets := battle_manager.get_valid_enemy_targets(battle_manager.current_turn_character)
+			if not valid_targets.is_empty():
 				target_selection_menu.show_targets(valid_targets)
-			else:
-				update_battle_info("没有可选择的敌方目标！")
-				_on_skill_selection_cancelled()
-		
-		SkillData.TargetType.ENEMY_ALL:
-			# 群体敌人技能无需选择目标
-			var valid_targets = battle_manager.get_valid_enemy_targets()
-			if !valid_targets.is_empty():
-				battle_manager.execute_skill(
-					battle_manager.current_turn_character, 
-					valid_targets, 
-					skill
-				)
-				battle_manager.set_state(BattleManager.BattleState.ROUND_END)
 			else:
 				update_battle_info("没有可选择的敌方目标！")
 				_on_skill_selection_cancelled()
 		
 		SkillData.TargetType.ALLY_SINGLE:
 			# 显示我方(不含自己)目标选择菜单
-			var valid_targets = battle_manager.get_valid_ally_targets(false)
+			var valid_targets = battle_manager.get_valid_ally_targets(battle_manager.current_turn_character, false)
 			if !valid_targets.is_empty():
 				target_selection_menu.show_targets(valid_targets)
 			else:
 				update_battle_info("没有可选择的友方目标！")
 				_on_skill_selection_cancelled()
 		
-		SkillData.TargetType.ALLY_SINGLE_INC_SELF:
+		SkillData.TargetType.ALLY_SINGLE_INC_SELF:  # 处理包含自己的单体友方目标选择
 			# 显示我方(含自己)目标选择菜单
-			var valid_targets = battle_manager.get_valid_ally_targets(true)
+			var valid_targets = battle_manager.get_valid_ally_targets(battle_manager.current_turn_character, true)
 			if !valid_targets.is_empty():
 				target_selection_menu.show_targets(valid_targets)
 			else:
 				update_battle_info("没有可选择的友方目标！")
 				_on_skill_selection_cancelled()
-		
-		SkillData.TargetType.ALLY_ALL:
-			# 群体我方(不含自己)技能
-			var valid_targets = battle_manager.get_valid_ally_targets(false)
-			if !valid_targets.is_empty():
-				battle_manager.execute_skill(
-					battle_manager.current_turn_character, 
-					valid_targets, 
-					skill
-				)
-				battle_manager.set_state(BattleManager.BattleState.ROUND_END)
-			else:
-				update_battle_info("没有可选择的友方目标！")
-				_on_skill_selection_cancelled()
-		
-		SkillData.TargetType.ALLY_ALL_INC_SELF:
-			# 群体我方(含自己)技能
-			var valid_targets = battle_manager.get_valid_ally_targets(true)
-			if !valid_targets.is_empty():
-				battle_manager.execute_skill(
-					battle_manager.current_turn_character, 
-					valid_targets, 
-					skill
-				)
-				battle_manager.set_state(BattleManager.BattleState.ROUND_END)
-			else:
-				update_battle_info("没有可选择的友方目标！")
-				_on_skill_selection_cancelled()
-		
 		_:
 			update_battle_info("未处理的目标类型: " + str(skill.target_type))
 			_on_skill_selection_cancelled()
@@ -222,19 +171,12 @@ func _on_target_selected(target: Character) -> void:
 		_show_action_menu()
 		return
 	
-	# 单体技能处理
-	if current_selected_skill.target_type == SkillData.TargetType.ENEMY_SINGLE || \
-	   current_selected_skill.target_type == SkillData.TargetType.ALLY_SINGLE || \
-	   current_selected_skill.target_type == SkillData.TargetType.ALLY_SINGLE_INC_SELF:
-		battle_manager.execute_skill(
-			battle_manager.current_turn_character, 
-			[target], 
-			current_selected_skill
-		)
-		battle_manager.set_state(BattleManager.BattleState.ROUND_END)
-	else:
-		push_error("非单体技能不应该调用单体目标选择")
-		_show_action_menu()
+	# 覆盖技能的默认目标逻辑，强制使用玩家选择的目标
+	battle_manager.execute_skill(
+		battle_manager.current_turn_character, 
+		current_selected_skill,
+		[target]
+	)
 
 # 当玩家取消目标选择时调用
 func _on_target_selection_cancelled() -> void:
@@ -244,60 +186,44 @@ func _on_target_selection_cancelled() -> void:
 
 # 更新战斗信息文本
 func update_battle_info(text: String) -> void:
-	if battle_info_label:
-		battle_info_label.text = text
+	if not battle_info_label:
+		return
+	if not battle_info_label.text.is_empty():
+		battle_info_label.text += "\n"
+	battle_info_label.text += text
 
 # UI辅助功能
-func _open_skill_menu() -> void:
-	if battle_manager.current_turn_character == null || \
-	   battle_manager.current_state != BattleManager.BattleState.PLAYER_TURN:
-		return
-	
-	# 隐藏行动菜单
-	if action_menu:
-		action_menu.hide()
-	
-	# 显示技能菜单
-	if skill_select_menu:
-		skill_select_menu.show_menu(
-			battle_manager.current_turn_character.character_data.skills,
-			battle_manager.current_turn_character.current_mp
-		)
-
 func _show_action_menu() -> void:
-	# 确保当前是玩家角色的回合
-	if battle_manager.current_turn_character == null || \
-	   !battle_manager.is_player_character(battle_manager.current_turn_character):
-		return
+	_hide_all_menus() # 假设这是你隐藏其他UI元素的方法
 	
-	# 隐藏其他可能显示的菜单
+	if action_menu: # 假设 action_menu 是你的行动菜单节点
+		var current_character: Character = battle_manager.current_turn_character # BattleManager 提供当前行动角色
+		if is_instance_valid(current_character):
+			var can_use_any_special_skill : bool = current_character.has_enough_mp_for_any_skill()
+			action_menu.set_skill_button_enabled(can_use_any_special_skill) # 假设菜单有此方法
+		else:
+			action_menu.set_skill_button_enabled(false) # 没有当前角色则禁用
+		
+		action_menu.visible = true
+		action_menu.setup_default_focus() # 假设菜单有此方法
+
+func _open_skill_menu() -> void:
 	_hide_all_menus()
 	
-	# 显示行动菜单并更新状态
-	if action_menu:
-		# 更新菜单状态
-		_update_action_menu_state()
-		# 显示菜单
-		action_menu.show()
-		# 设置默认焦点
-		action_menu.setup_default_focus()
+	if skill_select_menu and battle_manager.current_turn_character:
+		var character = battle_manager.current_turn_character
+		if character and character.character_data and character.character_data.skills:
+			skill_select_menu.show_menu(character.character_data.skills, character)
+		else:
+			update_battle_info("该角色没有技能")
+			_show_action_menu()
 
 func _hide_all_menus() -> void:
-	if skill_select_menu:
-		skill_select_menu.hide()
-	if target_selection_menu:
-		target_selection_menu.hide()
 	if action_menu:
-		action_menu.hide()
-
-# 更新行动菜单状态
-func _update_action_menu_state() -> void:
-	if !action_menu || !battle_manager.current_turn_character:
-		return
-		
-	# 根据MP是否足够来启用/禁用技能按钮
-	var has_enough_mp_for_any_skill = battle_manager.current_turn_character.has_enough_mp_for_any_skill()
-	action_menu.set_skill_button_enabled(has_enough_mp_for_any_skill)
+		action_menu.visible = false
 	
-	var has_usable_items = false #TODO 这里需要根据实际的物品系统来实现
-	action_menu.set_item_button_enabled(has_usable_items)
+	if skill_select_menu:
+		skill_select_menu.visible = false
+	
+	if target_selection_menu:
+		target_selection_menu.visible = false

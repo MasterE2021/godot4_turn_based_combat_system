@@ -44,7 +44,8 @@ signal character_stats_changed(character) # 角色状态变化
 signal skill_executed(caster, targets, skill, results)
 signal effect_applied(effect_type, source, target, result)
 
-func _ready():	
+func _ready():
+	_init_effect_processors()
 	_set_state(BattleState.IDLE)
 
 # 开始战斗
@@ -142,7 +143,7 @@ func execute_attack(attacker: Character, target: Character) -> void:
 	print(attacker.character_name, " 攻击 ", target.character_name)
 	
 	# 简单的伤害计算
-	var damage = target.take_damage(attacker.attack - target.defense)
+	var damage = target.take_damage(attacker.attack_power - target.defense_power)
 	
 	# 发出敌人行动执行信号
 	if enemy_characters.has(attacker):
@@ -403,7 +404,7 @@ func execute_skill(caster: Character, skill: SkillData, custom_targets: Array = 
 	
 	# 扣除MP
 	if skill.mp_cost > 0:
-		caster.deduct_mp_for_skill(skill.mp_cost, skill)
+		caster.use_mp(skill.mp_cost)
 	
 	# 获取目标
 	var targets = custom_targets if !custom_targets.is_empty() else get_targets_for_skill(caster, skill)
@@ -422,8 +423,8 @@ func execute_skill(caster: Character, skill: SkillData, custom_targets: Array = 
 
 	# 处理直接效果
 	var effect_results = {}
-	if !skill.direct_effects.is_empty():
-		effect_results = await apply_effects(skill.direct_effects, caster, targets)
+	if not skill.effects.is_empty():
+		effect_results = await apply_effects(skill.effects, caster, targets)
 
 	# 合并结果
 	var final_results = {}
@@ -437,6 +438,8 @@ func execute_skill(caster: Character, skill: SkillData, custom_targets: Array = 
 	# 发送技能执行信号
 	skill_executed.emit(caster, targets, skill, final_results)
 	
+	# 行动结束后转入回合结束
+	_set_state(BattleState.ROUND_END)
 	return final_results
 
 # 应用单个效果
@@ -446,7 +449,7 @@ func apply_effect(effect: SkillEffectData, source: Character, target: Character)
 		push_error("SkillSystem: 无效的角色引用")
 		return {}
 	
-	if !effect:
+	if not effect:
 		push_error("SkillSystem: 无效的效果引用")
 		return {}
 	
@@ -616,6 +619,8 @@ func _get_valid_ally_targets(caster: Character, include_self: bool = true) -> Ar
 func _request_animation(character: Character, animation_name: String) -> void:
 	if character.has_method("play_animation"):
 		character.play_animation(animation_name)
+	else:
+		push_warning("character not has method play_animation!")
 
 ## 处理视觉效果请求
 func _on_visual_effect_requested(effect_type: String, target, params: Dictionary = {}):
@@ -658,7 +663,9 @@ func _set_state(new_state: BattleState):
 		BattleState.ROUND_START:
 			# 回合开始处理，确定行动者
 			next_turn()
-			
+			# 重置当前回合角色标记
+			if current_turn_character:
+				current_turn_character.reset_turn_flags()
 		BattleState.PLAYER_TURN:
 			# 通知UI需要玩家输入
 			print("玩家回合：等待输入...")
@@ -677,10 +684,6 @@ func _set_state(new_state: BattleState):
 			pass
 			
 		BattleState.ROUND_END:
-			# 重置当前回合角色标记
-			if current_turn_character:
-				current_turn_character.reset_turn_flags()
-
 			# 回合结束处理
 			if not check_battle_end_condition():
 				_set_state(BattleState.ROUND_START)

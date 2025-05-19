@@ -40,7 +40,7 @@ var is_alive : bool = true:								## 生存状态标记
 	get: return current_hp > 0
 var active_attribute_set: SkillAttributeSet = null		## 运行时角色实际持有的AttributeSet实例 (通过模板duplicate而来)
 
-signal character_died(character: Character)
+signal character_defeated(character: Character)
 signal health_changed(current_hp: float, max_hp: float, character: Character)
 signal mana_changed(current_mp: float, max_mp: float, character: Character)
 
@@ -77,21 +77,7 @@ func initialize_from_data(data: CharacterData):
 	# 初始化AttributeSet，这将创建并配置所有属性实例
 	active_attribute_set.initialize_set()
 	
-	# 更新视觉表现
-	update_visual()
-	
 	print(character_name + " 初始化完毕，HP: " + str(current_hp) + "/" + str(max_hp))
-
-## 更新显示
-func update_visual():
-	if name_label:
-		name_label.text = character_name
-	
-	if hp_label:
-		hp_label.text = "HP: " + str(current_hp) + "/" + str(max_hp)
-	
-	if character_rect and character_data:
-		character_rect.color = character_data.color
 
 ## 设置防御状态
 func set_defending(value: bool) -> void:
@@ -122,13 +108,11 @@ func heal(amount: int) -> int:
 	active_attribute_set.set_current_value("CurrentHealth", active_attribute_set.get_current_value("CurrentHealth") + amount)
 	return amount
 
-
 func use_mp(amount: int) -> bool:
-	if current_mp >= amount:
-		current_mp -= amount
-		update_visual()
-		return true
-	return false
+	if current_mp < amount:
+		return false
+	active_attribute_set.set_current_value("CurrentMana", current_mp - amount)
+	return true
 
 ## 回合开始时重置标记
 func reset_turn_flags() -> void:
@@ -141,11 +125,15 @@ func has_enough_mp_for_any_skill() -> bool:
 			return true
 	return false
 
+## 播放动画
+func play_animation(animation_name: String) -> void:
+	print("假装播放了动画：", animation_name)
+
 ## 死亡处理方法
 func _die(death_source: Variant = null):
 	# is_alive 的getter会自动更新，但这里可以执行死亡动画、音效、移除出战斗等逻辑
 	print_rich("[color=red][b]%s[/b] has been defeated by %s![/color]" % [character_data.character_name, death_source])
-	character_died.emit(self)
+	character_defeated.emit(self)
 	modulate = Color(0.5, 0.5, 0.5, 0.5) # 变灰示例
 
 #region --- UI 更新辅助方法 ---
@@ -159,9 +147,8 @@ func _update_health_display() -> void:
 		var max_val = active_attribute_set.get_current_value(&"MaxHealth")
 		hp_bar.max_value = max_val
 		hp_bar.value = current_val
-		# (可选) 在血条上显示具体数值
-		if hp_bar.get_node_or_null("Label"):
-			hp_bar.get_node("Label").text = "%d/%d" % [roundi(current_val), roundi(max_val)]
+		# 在血条上显示具体数值
+		hp_label.text = "%d/%d" % [roundi(current_val), roundi(max_val)]
 
 func _update_mana_display() -> void:
 	if mp_bar and active_attribute_set: # 确保active_attribute_set已初始化
@@ -169,16 +156,14 @@ func _update_mana_display() -> void:
 		var max_val = active_attribute_set.get_current_value(&"MaxMana")
 		mp_bar.max_value = max_val
 		mp_bar.value = current_val
-		# (可选) 在法力条上显示具体数值
-		if mp_bar.get_node_or_null("Label"):
-			mp_bar.get_node("Label").text = "%d/%d" % [roundi(current_val), roundi(max_val)]
+		# 在法力条上显示具体数值
+		mp_label.text = "%d/%d" % [roundi(current_val), roundi(max_val)]
 
 #endregion
 
 ## 当AttributeSet中的属性当前值变化时调用
 func _on_attribute_current_value_changed(attribute_instance: SkillAttribute, old_value: float, new_value: float, source: Variant):
-	# print_rich("[b]%s[/b]'s [color=yellow]%s[/color] changed from [color=red]%.1f[/color] to [color=green]%.1f[/color] (Source: %s)" % [character_data.character_name, attribute_instance.display_name, old_value, new_value, source])
-	
+	print_rich("[b]%s[/b]'s [color=yellow]%s[/color] changed from [color=red]%.1f[/color] to [color=green]%.1f[/color] (Source: %s)" % [character_data.character_name, attribute_instance.display_name, old_value, new_value, source])
 	if attribute_instance.attribute_name == &"CurrentHealth":
 		health_changed.emit(new_value, max_hp, self)
 		_update_health_display()
@@ -190,10 +175,10 @@ func _on_attribute_current_value_changed(attribute_instance: SkillAttribute, old
 		_update_health_display()
 	elif attribute_instance.attribute_name == &"CurrentMana":
 		mana_changed.emit(new_value, max_mp, self)
-		# _update_mana_display()
+		_update_mana_display()
 	elif attribute_instance.attribute_name == &"MaxMana":
 		mana_changed.emit(current_mp, new_value, self)
-		# _update_mana_display()
+		_update_mana_display()
 
 ## 当AttributeSet中的属性基础值变化时调用
 func _on_attribute_base_value_changed(attribute_instance: SkillAttribute, _old_value: float, _new_value: float, _source: Variant):

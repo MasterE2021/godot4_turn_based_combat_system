@@ -5,12 +5,16 @@ class_name DamageEffectProcessor
 func get_processor_id() -> StringName:
 	return "damage"
 
+## 检查是否可以处理指定效果类型
+func can_process_effect(effect: SkillEffectData) -> bool:
+	return effect.effect_type == effect.EffectType.DAMAGE
+
 ## 处理伤害效果
 func process_effect(effect: SkillEffectData, caster: Character, target: Character) -> Dictionary:
 	var results = {}
 	
 	# 播放施法动画
-	_request_visual_effect("cast", caster, {"element": effect.damage_element})
+	_request_visual_effect("cast", caster, {})
 	
 	# 等待短暂时间
 	if Engine.get_main_loop():
@@ -25,21 +29,22 @@ func process_effect(effect: SkillEffectData, caster: Character, target: Characte
 	var damage = damage_result["damage"]
 	
 	# 播放命中动画，根据克制关系选择不同效果
-	var hit_params = {"element": effect.damage_element}
+	#var hit_params = {"element": effect.damage_element}
+	var hit_params = {}
 	
-	if damage_result["is_effective"]:
-		# 克制效果
-		_request_visual_effect("effective_hit", target, hit_params)
-		# 使用自定义颜色和前缀
-		_request_visual_effect("damage_number", target, {"damage": damage, "color": Color(1.0, 0.7, 0.0), "prefix": "克制! "})
-	elif damage_result["is_ineffective"]:
-		# 抵抗效果
-		_request_visual_effect("ineffective_hit", target, hit_params)
-		_request_visual_effect("damage_number", target, {"damage": damage, "color": Color(0.5, 0.5, 0.5), "prefix": "抵抗 "})
-	else:
-		# 普通效果
-		_request_visual_effect("hit", target, hit_params)
-		_request_visual_effect("damage_number", target, {"damage": damage, "color": Color.RED})
+	#if damage_result["is_effective"]:
+		## 克制效果
+		#_request_visual_effect("effective_hit", target, hit_params)
+		## 使用自定义颜色和前缀
+		#_request_visual_effect("damage_number", target, {"damage": damage, "color": Color(1.0, 0.7, 0.0), "prefix": "克制! "})
+	#elif damage_result["is_ineffective"]:
+		## 抵抗效果
+		#_request_visual_effect("ineffective_hit", target, hit_params)
+		#_request_visual_effect("damage_number", target, {"damage": damage, "color": Color(0.5, 0.5, 0.5), "prefix": "抵抗 "})
+	#else:
+	# 普通效果
+	_request_visual_effect("hit", target, hit_params)
+	_request_visual_effect("damage_number", target, {"damage": damage, "color": Color.RED})
 	
 	# 应用伤害
 	var actual_damage = target.take_damage(damage)
@@ -51,10 +56,10 @@ func process_effect(effect: SkillEffectData, caster: Character, target: Characte
 	
 	# 显示伤害信息
 	var message = ""
-	if damage_result["is_effective"]:
-		message += "[color=yellow]【克制！】[/color]"
-	elif damage_result["is_ineffective"]:
-		message += "[color=teal]【抵抗！】[/color]"
+	#if damage_result["is_effective"]:
+		#message += "[color=yellow]【克制！】[/color]"
+	#elif damage_result["is_ineffective"]:
+		#message += "[color=teal]【抵抗！】[/color]"
 	
 	message += "[color=red]%s 受到 %d 点伤害[/color]" % [target.character_name, actual_damage]
 	print_rich(message)
@@ -64,11 +69,6 @@ func process_effect(effect: SkillEffectData, caster: Character, target: Characte
 		print("%s 被击败!" % target.character_name)
 	
 	return results
-
-## 检查是否可以处理指定效果类型
-func can_process_effect(effect: SkillEffectData) -> bool:
-	# 默认实现，子类应该根据需要重写
-	return effect.effect_type == effect.EffectType.DAMAGE
 
 ## 计算伤害
 func _calculate_damage(caster: Character, target: Character, effect: SkillEffectData) -> Dictionary:
@@ -94,5 +94,5 @@ func _calculate_damage(caster: Character, target: Character, effect: SkillEffect
 	return {
 		"damage": int(final_damage),
 		"base_damage": damage_after_defense,
-		"target_element": target.element
+		#"target_element": target.element
 	}

@@ -31,8 +31,8 @@ var action_categories: Array[String] = ["any_action"] 			## 所属行动类别
 
 @export_group("视觉与音效 (可选)")
 @export var icon: Texture2D = null # 技能图标
+@export var cast_animation: StringName = "" # 施法动画名 (如果角色动画器中有)
 # 未来可扩展其他视觉和音效选项
-# @export var animation_name: StringName # 施法动画名 (如果角色动画器中有)
 # @export var vfx_scene: PackedScene # 技能特效场景
 # @export var sfx: AudioStream # 技能音效
 #endregion
@@ -55,7 +55,7 @@ func get_full_description() -> String:
 			desc += "- " + effect.get_description() + "\n"
 		else:
 			desc += "- [color=red](无效效果数据)[/color]\n"
-	desc += "\n[gray]" + description + "[/gray]\n\n"
+	desc += "[color=gray]" + description + "[/color]\n\n"
 	return desc.strip_edges()
 
 ## 获取目标类型名称

@@ -6,8 +6,8 @@ func get_processor_id() -> StringName:
 	return "heal"
 
 ## 判断是否可以处理该效果
-func can_process(effect: SkillEffectData) -> bool:
-	return effect.effect_type == effect.SkillEffectType.HEAL
+func can_process_effect(effect: SkillEffectData) -> bool:
+	return effect.effect_type == effect.EffectType.HEAL
 
 ## 处理治疗效果
 func process_effect(effect: SkillEffectData, source: Character, target: Character) -> Dictionary:
@@ -49,11 +49,8 @@ func process_effect(effect: SkillEffectData, source: Character, target: Characte
 
 ## 计算治疗量
 func _calculate_healing(caster: Character, _target: Character, effect: SkillEffectData) -> int:
-	# 获取基础治疗量
-	var power = effect.power
-	
 	# 基于魔法攻击力计算治疗量
-	var base_healing = power + (caster.magic_attack * 0.7)
+	var base_healing = effect.heal_amount + (caster.magic_attack * effect.heal_power_scale)
 	
 	# 加入随机浮动因素 (±15%)
 	var random_factor = randf_range(0.85, 1.15)
