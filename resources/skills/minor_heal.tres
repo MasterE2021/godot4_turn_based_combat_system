@@ -12,7 +12,6 @@ damage_amount = 10
 damage_power_scale = 1.0
 heal_amount = 10
 heal_power_scale = 0.5
-attr = ""
 status_chance = 1.0
 dispel_types = Array[String]([])
 dispel_count = 1

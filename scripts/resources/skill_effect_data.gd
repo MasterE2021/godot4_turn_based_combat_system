@@ -5,7 +5,6 @@ class_name SkillEffectData
 enum EffectType {
 	DAMAGE,            ## 伤害
 	HEAL,              ## 治疗
-	ATTRIBUTE_MODIFY,  ## 属性修改
 	STATUS,           ## 控制
 	DISPEL,            ## 驱散
 	SPECIAL            ## 特殊效果
@@ -26,11 +25,6 @@ enum EffectType {
 @export_group("治疗效果参数", "heal_")
 @export var heal_amount: int = 10       		## 基础治疗值
 @export var heal_power_scale: float = 0.5  		## 魔法攻击力加成系数
-
-# 属性修改参数
-@export_group("属性修改参数", "attr_")
-@export var attr: String = ""  								## 属性类型
-@export var attr_modifier: SkillAttributeModifier = null  	## 修改器模版
 
 ## 应用效果参数
 @export_group("应用效果参数", "status_")
@@ -56,8 +50,6 @@ func get_description() -> String:
 			return _get_damage_description()
 		EffectType.HEAL:
 			return _get_heal_description()
-		EffectType.ATTRIBUTE_MODIFY:
-			return _get_attribute_modify_description()
 		EffectType.STATUS:
 			return _get_status_description()
 		EffectType.DISPEL:
@@ -66,29 +58,6 @@ func get_description() -> String:
 			return _get_special_description()
 		_:
 			return "未知效果"
-
-## 获取属性修改效果描述
-func _get_attribute_modify_description() -> String:
-	var value = attr_modifier.magnitude
-	var is_percent := attr_modifier.operation == attr_modifier.ModifierOperation.ADD_PERCENTAGE
-	
-	var attr_name = ""
-	match attr:
-		"max_health": attr_name = "生命值"
-		"max_mana": attr_name = "法力值"
-		"attack": attr_name = "攻击力"
-		"defense": attr_name = "防御力"
-		"magic_attack": attr_name = "魔法攻击"
-		"magic_defense": attr_name = "魔法防御"
-		"speed": attr_name = "速度"
-		_: attr_name = attr
-	
-	if is_percent:
-		var _sign = "+" if value > 0 else "-"
-		return "%s%d%% %s" % [_sign, abs(value), attr_name]
-	else:
-		var _sign = "+" if value > 0 else "-"
-		return "%s%d %s" % [_sign, abs(value), attr_name]
 
 ## 获取伤害效果描述
 func _get_damage_description() -> String:
