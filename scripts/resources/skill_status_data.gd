@@ -38,10 +38,9 @@ enum StatusType {
 @export var duration: int = 3                   								## 默认持续回合数 (对TURNS类型有效)
 @export var duration_type: DurationType = DurationType.TURNS					## 持续时间类型
 @export var max_stacks: int = 1                 								## 最大叠加层数
-@export var stack_behavior: StackBehavior = StackBehavior.REFRESH_DURATION		## 叠加行为
+@export var stack_behavior: StackBehavior = StackBehavior.REFRESH_DURATION	## 叠加行为
 
 # 核心影响机制 (数组内为 SkillEffectData 或 SkillAttributeModifier 模板资源)
-@export var _attribute_modifiers: Array[SkillAttributeModifier] = []			## 属性修改器
 @export var _initial_effects: Array[SkillEffectData] = []						## 初始效果
 @export var _ongoing_effects: Array[SkillEffectData] = []						## 持续效果
 @export var _end_effects: Array[SkillEffectData] = []							## 结束效果
@@ -63,6 +62,9 @@ var target_char: Character   													## 拥有此状态的角色 (方便状
 var left_duration: int       													## 剩余持续时间
 var stacks: int = 1          													## 当前叠加层数
 
+signal status_applied
+signal status_ended
+
 #region --- 方法 ---
 func _init(): 
 	source_char = null
@@ -81,9 +83,6 @@ func get_full_description() -> String:
 		
 	if max_stacks > 1:
 		desc += "最多叠加 %d 层. " % max_stacks
-	
-	if not _attribute_modifiers.is_empty():
-		desc += _get_modifiers_description()    
 	if not _initial_effects.is_empty(): desc += "应用时触发效果.\n"
 	if not _ongoing_effects.is_empty(): desc += "每回合触发效果.\n"
 	if not _end_effects.is_empty(): desc += "结束时触发效果.\n"
@@ -97,24 +96,13 @@ func overrides_other_status(other_status_id: StringName) -> bool:
 	return overrides_states.has(other_status_id)
 
 # 便捷的Getter方法
-func get_attribute_modifiers() -> Array[SkillAttributeModifier]: return _attribute_modifiers
 func get_initial_effects() -> Array[SkillEffectData]: return _initial_effects
 func get_ongoing_effects() -> Array[SkillEffectData]: return _ongoing_effects
 func get_end_effects() -> Array[SkillEffectData]: return _end_effects
 
-func _get_modifiers_description() -> String:
-	var desc = "\n属性影响:\n"
-	for mod : SkillAttributeModifier in _attribute_modifiers:
-		if is_instance_valid(mod):
-			var op_name: String = "未知操作"
-			match mod.operation:
-				SkillAttributeModifier.ModifierOperation.ADD_ABSOLUTE:
-					op_name = "直接加/减"
-				SkillAttributeModifier.ModifierOperation.OVERRIDE:
-					op_name = "覆盖"
-				SkillAttributeModifier.ModifierOperation.ADD_PERCENTAGE:
-					op_name = "基于基础值计算百分比"
-			desc += "- %s %s %.1f\n" % [op_name, mod.attribute_id, mod.magnitude]
-	return desc.strip_edges()
+func apply_status():
+	status_applied.emit()
 
+func end_status():
+	status_ended.emit()
 #endregion

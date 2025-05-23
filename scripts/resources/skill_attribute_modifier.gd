@@ -15,14 +15,17 @@ enum ModifierOperation {
 @export var operation: ModifierOperation = ModifierOperation.ADD_ABSOLUTE
 ## (可选) 此Modifier的来源标识 (例如Buff的ID, 装备的UUID等)
 ## 用于调试或由外部系统决定是否移除特定来源的Modifier
-var _source_id: int = 0 
+var _source: Variant = null 
 
 func _init(
 		p_attribute_id: StringName = &"", 
 		p_magnitude: float = 0.0, 
 		p_operation: ModifierOperation = ModifierOperation.ADD_ABSOLUTE, 
-		p_source_id: int = 0) -> void:
+		p_source: Variant = null) -> void:
 	attribute_id = p_attribute_id
 	magnitude = p_magnitude
 	operation = p_operation
-	_source_id = p_source_id
+	_source = p_source
+
+func set_source(p_source: Variant) -> void:
+	_source = p_source

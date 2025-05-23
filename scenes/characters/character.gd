@@ -108,12 +108,6 @@ func heal(amount: int) -> int:
 	active_attribute_set.set_current_value("CurrentHealth", active_attribute_set.get_current_value("CurrentHealth") + amount)
 	return amount
 
-func use_mp(amount: int) -> bool:
-	if current_mp < amount:
-		return false
-	active_attribute_set.set_current_value("CurrentMana", current_mp - amount)
-	return true
-
 ## 回合开始时重置标记
 func reset_turn_flags() -> void:
 	set_defending(false)
@@ -201,7 +195,7 @@ signal status_updated_on_character(character: Character, status_instance: SkillS
 
 ## 添加状态效果到角色身上 (由 ApplyStatusEffectProcessor 调用)
 ## [param effect_data_from_skill] 是那个类型为STATUS的SkillEffectData，用于获取duration_override等
-func apply_status_effect(status_template: SkillStatusData, p_source_char: Character, effect_data_from_skill: SkillEffectData) -> Dictionary:
+func apply_skill_status(status_template: SkillStatusData, p_source_char: Character, effect_data_from_skill: SkillEffectData) -> Dictionary:
 	if not is_instance_valid(status_template):
 		return {"applied_successfully": false, "reason": "invalid_status_template"}
 	var status_id : StringName = status_template.status_id
@@ -221,14 +215,14 @@ func apply_status_effect(status_template: SkillStatusData, p_source_char: Charac
 			if _active_statuses.has(id_to_override):
 				ids_to_remove_due_to_override.append(id_to_override)
 		for id_rem in ids_to_remove_due_to_override: 
-			await remove_status_effect(id_rem, true, battle_manager_ref)
+			await remove_skill_status(id_rem, true)
 
 	var old_stacks = 0
 	var old_duration = 0
 	var runtime_status_instance: SkillStatusData 
 
-	var duration_override = effect_data_from_skill.duration_override if is_instance_valid(effect_data_from_skill) else -1
-	var stacks_to_apply_from_effect = effect_data_from_skill.stacks_to_apply if is_instance_valid(effect_data_from_skill) else 1
+	var duration_override = effect_data_from_skill.status_duration_override if is_instance_valid(effect_data_from_skill) else -1
+	var stacks_to_apply_from_effect = effect_data_from_skill.status_stacks_to_apply if is_instance_valid(effect_data_from_skill) else 1
 
 	if _active_statuses.has(status_id): # 已存在同ID状态，处理叠加
 		runtime_status_instance = _active_statuses[status_id]
@@ -259,7 +253,7 @@ func apply_status_effect(status_template: SkillStatusData, p_source_char: Charac
 				result_info.reason = "stacked_independent_simplified"
 			
 		if runtime_status_instance.stacks != new_stack_count: 
-			_apply_attribute_modifiers_for_status(runtime_status_instance, false) 
+			_apply_attribute_modifiers_for_status(runtime_status_instance, false)
 			runtime_status_instance.stacks = new_stack_count
 			_apply_attribute_modifiers_for_status(runtime_status_instance)   
 		
@@ -278,34 +272,39 @@ func apply_status_effect(status_template: SkillStatusData, p_source_char: Charac
 		runtime_status_instance.stacks = clamp(stacks_to_apply_from_effect, 1, status_template.max_stacks)
 		
 		_active_statuses[status_id] = runtime_status_instance
-		_apply_attribute_modifiers_for_status(runtime_status_instance) 
+		_apply_attribute_modifiers_for_status(runtime_status_instance)   
 		result_info.reason = "newly_applied"
 		result_info.applied_successfully = true
 		status_applied_to_character.emit(self, runtime_status_instance)
 
 	result_info.status_instance = runtime_status_instance
+	runtime_status_instance.apply_status()
 	return result_info
 
 ## 移除状态效果
-func remove_status_effect(status_id: StringName, trigger_end_effects: bool = true, p_battle_manager_ref = null) -> bool:
+## [param status_id] 要移除的状态ID
+## [param trigger_end_effects] 是否触发结束效果
+## [return] 是否成功移除状态
+func remove_skill_status(status_id: StringName, trigger_end_effects: bool = true) -> bool:
 	if not _active_statuses.has(status_id): return false
 	var runtime_status_instance: SkillStatusData = _active_statuses[status_id]
 	_active_statuses.erase(status_id)
 	_apply_attribute_modifiers_for_status(runtime_status_instance, false)
 	status_removed_from_character.emit(self, status_id, runtime_status_instance) 
 
-	if trigger_end_effects and not runtime_status_instance.end_effects.is_empty():
-		var bm_ref = p_battle_manager_ref if p_battle_manager_ref else get_battle_manager_reference()
-		if bm_ref and bm_ref.has_method("_apply_skill_effects_to_targets"):
+	var end_effects = runtime_status_instance.get_end_effects()
+	if trigger_end_effects and not end_effects.is_empty():
+		var bm_ref : BattleManager = get_battle_manager_reference()
+		if bm_ref:
 			var effect_source = runtime_status_instance.source_char if is_instance_valid(runtime_status_instance.source_char) else self
-			await bm_ref._apply_skill_effects_to_targets(
-				runtime_status_instance.get_end_effects(), effect_source, [self], null
-			)
+			await bm_ref.apply_effects(end_effects, effect_source, [self])
 	return true
 
 ## 应用/移除一个状态实例的属性修改器
-func _apply_attribute_modifiers_for_status(runtime_status_inst: SkillStatusData, add: bool = true):
-	if not active_attribute_set or not is_instance_valid(runtime_status_inst): return # active_attribute_set 来自第七章
+## [param runtime_status_inst] 要应用的技能状态实例
+## [param add] 是否添加修改器，否则移除
+func _apply_attribute_modifiers_for_status(runtime_status_inst: SkillStatusData, add: bool = true) -> void:
+	if not active_attribute_set or not is_instance_valid(runtime_status_inst): return
 	if runtime_status_inst.attribute_modifiers.is_empty(): return
 
 	for modifier_template: SkillAttributeModifier in runtime_status_inst.attribute_modifiers:
@@ -354,28 +353,34 @@ func process_active_statuses_for_turn_end(p_battle_manager_ref):
 			
 	for expired_id in expired_status_ids: 
 		if _active_statuses.has(expired_id): 
-			await remove_status_effect(expired_id, true, p_battle_manager_ref)
+			await remove_skill_status(expired_id, true)
 
+## 获取 BattleManager 引用
+## [return] BattleManager 引用
 func get_battle_manager_reference() -> BattleManager: # 确保此方法在Character.gd中定义
 	var bm_node = get_tree().current_scene.find_child("BattleManager", true, false) 
 	return bm_node if bm_node is BattleManager else null
 
+## 获取所有活动状态的运行时实例
+## [return] 所有活动状态的运行时实例数组
 func get_all_active_status_instances_for_check() -> Array[SkillStatusData]:
 	return _active_statuses.values()
 
-# Character.gd 中原有的 can_cast_skill 和 deduct_mp_for_skill
+## MP检查
 func can_cast_skill(skill_data: SkillData) -> bool: # 由BattleManager调用
 	if not is_instance_valid(skill_data): return false
 	return current_mp >= skill_data.mp_cost # current_mp getter 依赖 active_attribute_set
 
-func deduct_mp_for_skill(amount: int, source_skill: SkillData): # 由BattleManager调用
+## MP扣减
+func deduct_mp_for_skill(source_skill: SkillData): # 由BattleManager调用
+	var amount := source_skill.mp_cost
 	if amount > 0 and is_instance_valid(active_attribute_set): 
 		var mp_attr_name = &"CurrentMana"
 		var old_mp = active_attribute_set.get_current_value(mp_attr_name)
 		# 通过AttributeSet修改MP，以便触发信号和钩子
 		active_attribute_set.set_current_value(mp_attr_name, old_mp - amount, source_skill)
 
-# 获取角色身上所有状态限制的行动类别 (供 BattleManager.can_perform_action 使用)
+## 获取角色身上所有状态限制的行动类别 (供 BattleManager.can_perform_action 使用)
 func get_combined_restricted_action_categories() -> Array[StringName]:
 	var all_restrictions: Array[StringName] = []
 	for status_instance: SkillStatusData in _active_statuses.values():

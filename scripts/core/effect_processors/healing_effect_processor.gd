@@ -10,18 +10,18 @@ func can_process_effect(effect: SkillEffectData) -> bool:
 	return effect.effect_type == effect.EffectType.HEAL
 
 ## 处理治疗效果
-func process_effect(effect: SkillEffectData, source: Character, target: Character) -> Dictionary:
+func process_effect(effect: SkillEffectData, caster: Character, target: Character, _source: Variant) -> Dictionary:
 	var results = {}
 	
 	# 播放施法动画
-	_request_visual_effect("heal_cast", source, {})
+	_request_visual_effect("heal_cast", caster, {})
 	
 	# 等待短暂时间
 	if Engine.get_main_loop():
 		await Engine.get_main_loop().process_frame
 	
 	# 计算治疗量
-	var heal_amount = _calculate_healing(source, target, effect)
+	var heal_amount = _calculate_healing(caster, target, effect)
 	
 	# 播放治疗效果
 	_request_visual_effect("heal", target, {})

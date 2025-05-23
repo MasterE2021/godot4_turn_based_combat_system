@@ -10,7 +10,7 @@ func can_process_effect(effect: SkillEffectData) -> bool:
 	return effect.effect_type == effect.EffectType.DAMAGE
 
 ## 处理伤害效果
-func process_effect(effect: SkillEffectData, caster: Character, target: Character) -> Dictionary:
+func process_effect(effect: SkillEffectData, caster: Character, target: Character, _source: Variant) -> Dictionary:
 	var results = {}
 	
 	# 播放施法动画

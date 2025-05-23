@@ -403,8 +403,8 @@ func execute_skill(caster: Character, skill: SkillData, custom_targets: Array = 
 		return {"error": "mp_not_enough"}
 	
 	# 扣除MP
-	if skill.mp_cost > 0:
-		caster.use_mp(skill.mp_cost)
+	if caster.can_cast_skill(skill):
+		caster.deduct_mp_for_skill(skill)
 	
 	# 获取目标
 	var targets = custom_targets if !custom_targets.is_empty() else get_targets_for_skill(caster, skill)
@@ -468,7 +468,11 @@ func apply_effect(effect: SkillEffectData, source: Character, target: Character)
 		push_error("SkillSystem: 无效的效果处理器")
 		return {}
 
-# 应用多个效果
+## 应用多个效果
+## [param effects] 要应用的效果数组
+## [param source] 效果的施法者
+## [param targets] 效果的目标角色数组
+## [return] 所有效果的结果
 func apply_effects(effects: Array, source: Character, targets: Array) -> Dictionary:
 	var all_results = {}
 
@@ -537,8 +541,8 @@ func get_processor_id_for_effect(effect: SkillEffectData) -> String:
 			return "damage"
 		SkillEffectData.EffectType.HEAL:
 			return "heal"
-		SkillEffectData.EffectType.ATTRIBUTE_MODIFY:
-			return "attribute"
+		# SkillEffectData.EffectType.ATTRIBUTE_MODIFY:
+		# 	return "attribute"
 		SkillEffectData.EffectType.STATUS:
 			return "status"
 		SkillEffectData.EffectType.DISPEL:
@@ -575,6 +579,8 @@ func _init_effect_processors():
 	# 注册处理器
 	register_effect_processor(DamageEffectProcessor.new(self))
 	register_effect_processor(HealingEffectProcessor.new(self))
+	register_effect_processor(ApplyStatusEffectProcessor.new(self))
+	register_effect_processor(DispelEffectProcessor.new(self))
 
 #region 辅助函数
 ## 获取有效的敌方目标
@@ -686,6 +692,7 @@ func _set_state(new_state: BattleState):
 		BattleState.ROUND_END:
 			# 回合结束处理
 			if not check_battle_end_condition():
+				current_turn_character.process_active_statuses_for_turn_end(self)
 				_set_state(BattleState.ROUND_START)
 				
 		BattleState.VICTORY:
