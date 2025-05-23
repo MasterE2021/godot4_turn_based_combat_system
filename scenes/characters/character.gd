@@ -3,6 +3,10 @@ class_name Character
 
 @export var character_data: CharacterData
 
+# 组件引用
+var combat_component: CharacterCombatComponent
+var skill_component: CharacterSkillComponent
+
 #region --- 常用属性的便捷Getter ---
 var current_hp: float:
 	get: return active_attribute_set.get_current_value(&"CurrentHealth") if active_attribute_set else 0.0
@@ -35,31 +39,62 @@ var character_name : StringName:
 @onready var character_rect := $Container/CharacterRect
 @onready var defense_indicator : DefenseIndicator = $DefenseIndicator
 
-var is_defending: bool = false							## 防御状态标记
-var is_alive : bool = true:								## 生存状态标记
+# 属性委托给战斗组件
+var is_defending: bool:
+	get: return combat_component.is_defending if combat_component else false
+	set(value): if combat_component: combat_component.set_defending(value)
+
+var is_alive : bool = true:							## 生存状态标记
 	get: return current_hp > 0
 var active_attribute_set: SkillAttributeSet = null		## 运行时角色实际持有的AttributeSet实例 (通过模板duplicate而来)
 
+# 信号 - 这些信号将转发组件的信号
 signal character_defeated(character: Character)
 signal health_changed(current_hp: float, max_hp: float, character: Character)
 signal mana_changed(current_mp: float, max_mp: float, character: Character)
 
 func _ready():
+	# 创建和初始化组件
+	_init_components()
+	
 	if character_data:
 		initialize_from_data(character_data)
 	else:
 		push_error("角色场景 " + name + " 没有分配CharacterData!")
 
-	# 链接AttributeSet到Character
-	active_attribute_set.current_value_changed.connect(_on_attribute_current_value_changed)
-	active_attribute_set.base_value_changed.connect(_on_attribute_base_value_changed)
-	
+	if active_attribute_set:
+		# 链接AttributeSet到Character
+		active_attribute_set.current_value_changed.connect(_on_attribute_current_value_changed)
+		active_attribute_set.base_value_changed.connect(_on_attribute_base_value_changed)
+		
 	# 初始化UI显示
 	_update_name_display()
 	_update_health_display()
 	_update_mana_display()
 
 	print("%s initialized. HP: %.1f/%.1f, Attack: %.1f" % [character_data.character_name, current_hp, max_hp, attack_power])
+
+## 初始化组件
+func _init_components() -> void:
+	# 创建战斗组件
+	combat_component = CharacterCombatComponent.new(self)
+	skill_component = CharacterSkillComponent.new(self)
+	
+	# 添加为子节点
+	add_child(combat_component)
+	add_child(skill_component)
+	
+	# 连接组件信号
+	combat_component.character_defeated.connect(func(character): character_defeated.emit(character))
+	
+	skill_component.status_applied_to_character.connect(func(character, status_instance): 
+		status_applied_to_character.emit(character, status_instance))
+		
+	skill_component.status_removed_from_character.connect(func(character, status_id, status_instance): 
+		status_removed_from_character.emit(character, status_id, status_instance))
+		
+	skill_component.status_updated_on_character.connect(func(character, status_instance, old_stacks, old_duration): 
+		status_updated_on_character.emit(character, status_instance, old_stacks, old_duration))
 
 ## 初始化玩家数据
 func initialize_from_data(data: CharacterData):
@@ -81,54 +116,65 @@ func initialize_from_data(data: CharacterData):
 
 ## 设置防御状态
 func set_defending(value: bool) -> void:
-	is_defending = value
-	if defense_indicator:
-		if is_defending:
-			defense_indicator.show_indicator()
-		else:
-			defense_indicator.hide_indicator()
+	if combat_component:
+		combat_component.set_defending(value)
 
 ## 伤害处理方法
-func take_damage(base_damage: float) -> float:
-	var final_damage: float = base_damage
+func take_damage(base_damage: float, source: Variant = null) -> float:
+	if combat_component:
+		return combat_component.take_damage(base_damage, source)
+	return 0.0
 
-	# 如果处于防御状态，则减免伤害
-	if is_defending:
-		final_damage = round(final_damage * 0.5)
-		print(character_name + " 正在防御，伤害减半！")
-		set_defending(false)	# 防御效果通常在受到一次攻击后解除
-
-	if final_damage <= 0: 
-		return 0
-
-	active_attribute_set.set_current_value("CurrentHealth", active_attribute_set.get_current_value("CurrentHealth") - final_damage)
-	return final_damage
-
-func heal(amount: int) -> int:
-	active_attribute_set.set_current_value("CurrentHealth", active_attribute_set.get_current_value("CurrentHealth") + amount)
-	return amount
+func heal(amount: float, source: Variant = null) -> float:
+	if combat_component:
+		return combat_component.heal(amount, source)
+	return 0.0
 
 ## 回合开始时重置标记
 func reset_turn_flags() -> void:
-	set_defending(false)
+	if combat_component:
+		combat_component.reset_turn_flags()
 
 ## 是否足够释放技能MP
 func has_enough_mp_for_any_skill() -> bool:
-	for skill in character_data.skills:
-		if current_mp >= skill.mp_cost:
-			return true
+	if skill_component:
+		return skill_component.has_enough_mp_for_any_skill()
 	return false
+
+## 检查是否有足够的MP使用指定技能
+func has_enough_mp_for_skill(skill: SkillData) -> bool:
+	if combat_component:
+		return combat_component.has_enough_mp_for_skill(skill)
+	return false
+
+## 使用MP
+func use_mp(amount: float, source: Variant = null) -> bool:
+	if combat_component:
+		return combat_component.use_mp(amount, source)
+	return false
+
+## 恢复MP
+func restore_mp(amount: float, source: Variant = null) -> float:
+	if combat_component:
+		return combat_component.restore_mp(amount, source)
+	return 0.0
 
 ## 播放动画
 func play_animation(animation_name: String) -> void:
-	print("假装播放了动画：", animation_name)
+	if combat_component:
+		combat_component.play_animation(animation_name)
+	else:
+		print("假装播放了动画：", animation_name)
 
 ## 死亡处理方法
 func _die(death_source: Variant = null):
 	# is_alive 的getter会自动更新，但这里可以执行死亡动画、音效、移除出战斗等逻辑
-	print_rich("[color=red][b]%s[/b] has been defeated by %s![/color]" % [character_data.character_name, death_source])
-	character_defeated.emit(self)
-	modulate = Color(0.5, 0.5, 0.5, 0.5) # 变灰示例
+	if combat_component:
+		combat_component.handle_death(death_source)
+	else:
+		print_rich("[color=red][b]%s[/b] has been defeated by %s![/color]" % [character_data.character_name, death_source])
+		character_defeated.emit(self)
+		modulate = Color(0.5, 0.5, 0.5, 0.5) # 变灰示例
 
 #region --- UI 更新辅助方法 ---
 func _update_name_display() -> void:
@@ -196,65 +242,46 @@ signal status_updated_on_character(character: Character, status_instance: SkillS
 ## 添加状态效果到角色身上 (由 ApplyStatusProcessor 调用)
 ## [param effect_data_from_skill] 是那个类型为STATUS的SkillEffectData，用于获取duration_override等
 func apply_skill_status(status_template: SkillStatusData, p_source_char: Character, effect_data_from_skill: SkillEffectData) -> Dictionary:
-	if not is_instance_valid(status_template):
-		return {"applied_successfully": false, "reason": "invalid_status_template"}
-	
-	var status_id : StringName = status_template.status_id
-	var result_info : Dictionary = {"applied_successfully": false, "reason": "unknown", "status_instance": null}
-
-	# 1. 抵抗检查
-	if _check_status_resistance(status_template, result_info):
-		return result_info
-
-	# 2. 覆盖逻辑
-	_handle_status_override(status_template)
-
-	# 3. 获取效果数据参数
-	var duration_override = effect_data_from_skill.status_duration_override if is_instance_valid(effect_data_from_skill) else -1
-	var stacks_to_apply_from_effect = effect_data_from_skill.status_stacks_to_apply if is_instance_valid(effect_data_from_skill) else 1
-
-	# 4. 处理状态应用逻辑
-	var runtime_status_instance: SkillStatusData
-	if _active_statuses.has(status_id): # 已存在同ID状态，处理叠加
-		runtime_status_instance = _update_existing_status(
-			status_template, 
-			p_source_char, 
-			duration_override, 
-			stacks_to_apply_from_effect, 
-			result_info
-		)
-	else: # 全新状态添加
-		runtime_status_instance = _apply_new_status(
-			status_template, 
-			p_source_char, 
-			duration_override, 
-			stacks_to_apply_from_effect, 
-			result_info
-		)
-		if not runtime_status_instance:
-			return result_info
-
-	result_info.status_instance = runtime_status_instance
-	return result_info
+	if skill_component:
+		return skill_component.apply_skill_status(status_template, p_source_char, effect_data_from_skill)
+	return {"applied_successfully": false, "reason": "no_skill_component"}
 
 ## 移除状态效果
 ## [param status_id] 要移除的状态ID
 ## [param trigger_end_effects] 是否触发结束效果
 ## [return] 是否成功移除状态
 func remove_skill_status(status_id: StringName, trigger_end_effects: bool = true) -> bool:
-	if not _active_statuses.has(status_id): return false
-	var runtime_status_instance: SkillStatusData = _active_statuses[status_id]
-	_active_statuses.erase(status_id)
-	_apply_attribute_modifiers_for_status(runtime_status_instance, false)
-	status_removed_from_character.emit(self, status_id, runtime_status_instance) 
+	if skill_component:
+		return skill_component.remove_status(status_id, trigger_end_effects)
+	return false
 
-	var end_effects = runtime_status_instance.get_end_effects()
-	if trigger_end_effects and not end_effects.is_empty():
-		var bm_ref : BattleManager = get_battle_manager_reference()
-		if bm_ref:
-			var effect_source = runtime_status_instance.source_char if is_instance_valid(runtime_status_instance.source_char) else self
-			await bm_ref.apply_effects(end_effects, effect_source, [self])
-	return true
+## 获取战斗管理器引用
+func get_battle_manager_reference() -> BattleManager:
+	var battle_manager = get_node_or_null("/root/BattleManager")
+	return battle_manager
+
+## 获取状态实例
+func get_status(status_id: StringName) -> SkillStatusData:
+	if skill_component:
+		return skill_component.get_status(status_id)
+	return null
+
+## 检查是否有指定状态
+func has_status(status_id: StringName) -> bool:
+	if skill_component:
+		return skill_component.has_status(status_id)
+	return false
+
+## 获取指定状态的层数
+func get_status_stacks(status_id: StringName) -> int:
+	if skill_component:
+		return skill_component.get_status_stacks(status_id)
+	return 0
+
+## 更新状态持续时间
+func update_status_durations() -> void:
+	if skill_component:
+		skill_component.update_status_durations()
 
 ## 检查状态是否被抵抗
 ## 遍历当前所有活动状态，检查是否有状态抵抗新状态的添加
@@ -420,12 +447,6 @@ func process_active_statuses_for_turn_end(p_battle_manager_ref):
 	for expired_id in expired_status_ids: 
 		if _active_statuses.has(expired_id): 
 			await remove_skill_status(expired_id, true)
-
-## 获取 BattleManager 引用
-## [return] BattleManager 引用
-func get_battle_manager_reference() -> BattleManager: # 确保此方法在Character.gd中定义
-	var bm_node = get_tree().current_scene.find_child("BattleManager", true, false) 
-	return bm_node if bm_node is BattleManager else null
 
 ## 获取所有活动状态的运行时实例
 ## [return] 所有活动状态的运行时实例数组

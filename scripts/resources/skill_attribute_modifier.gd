@@ -8,11 +8,11 @@ enum ModifierOperation {
 }
 
 enum ModifierPriority {
-    VERY_LOW = 0,
-    LOW = 25,
-    NORMAL = 50,
-    HIGH = 75,
-    VERY_HIGH = 100
+	VERY_LOW = 0,
+	LOW = 25,
+	NORMAL = 50,
+	HIGH = 75,
+	VERY_HIGH = 100
 }
 
 ## 修改的属性ID
