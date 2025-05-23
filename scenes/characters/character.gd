@@ -193,92 +193,48 @@ signal status_removed_from_character(character: Character, status_id: StringName
 ## 当状态效果更新时发出 (例如 stacks 或 duration 变化)
 signal status_updated_on_character(character: Character, status_instance: SkillStatusData, old_stacks: int, old_duration: int)
 
-## 添加状态效果到角色身上 (由 ApplyStatusEffectProcessor 调用)
+## 添加状态效果到角色身上 (由 ApplyStatusProcessor 调用)
 ## [param effect_data_from_skill] 是那个类型为STATUS的SkillEffectData，用于获取duration_override等
 func apply_skill_status(status_template: SkillStatusData, p_source_char: Character, effect_data_from_skill: SkillEffectData) -> Dictionary:
 	if not is_instance_valid(status_template):
 		return {"applied_successfully": false, "reason": "invalid_status_template"}
+	
 	var status_id : StringName = status_template.status_id
 	var result_info : Dictionary = {"applied_successfully": false, "reason": "unknown", "status_instance": null}
-	var battle_manager_ref = get_battle_manager_reference() # 确保此方法有效
 
-	# 1. 抵抗检查 (遍历 _active_statuses 中的运行时实例)
-	for active_status_instance: SkillStatusData in _active_statuses.values():
-		if status_template.is_countered_by(active_status_instance.status_id): # 比较模板ID
-			result_info.reason = "resisted_by_status_%s" % active_status_instance.status_id
-			return result_info
+	# 1. 抵抗检查
+	if _check_status_resistance(status_template, result_info):
+		return result_info
 
-	# 2. 覆盖逻辑 (新状态覆盖旧状态)
-	if not status_template.overrides_states.is_empty():
-		var ids_to_remove_due_to_override: Array[StringName] = [] 
-		for id_to_override in status_template.overrides_states:
-			if _active_statuses.has(id_to_override):
-				ids_to_remove_due_to_override.append(id_to_override)
-		for id_rem in ids_to_remove_due_to_override: 
-			await remove_skill_status(id_rem, true)
+	# 2. 覆盖逻辑
+	_handle_status_override(status_template)
 
-	var old_stacks = 0
-	var old_duration = 0
-	var runtime_status_instance: SkillStatusData 
-
+	# 3. 获取效果数据参数
 	var duration_override = effect_data_from_skill.status_duration_override if is_instance_valid(effect_data_from_skill) else -1
 	var stacks_to_apply_from_effect = effect_data_from_skill.status_stacks_to_apply if is_instance_valid(effect_data_from_skill) else 1
 
+	# 4. 处理状态应用逻辑
+	var runtime_status_instance: SkillStatusData
 	if _active_statuses.has(status_id): # 已存在同ID状态，处理叠加
-		runtime_status_instance = _active_statuses[status_id]
-		old_stacks = runtime_status_instance.stacks
-		old_duration = runtime_status_instance.left_duration
-		
-		runtime_status_instance.source_char = p_source_char 
-		var new_duration_base = duration_override if duration_override > -1 else status_template.duration
-		var new_stack_count = runtime_status_instance.stacks
-
-		match status_template.stack_behavior: 
-			SkillStatusData.StackBehavior.NO_STACK:
-				runtime_status_instance.left_duration = new_duration_base
-				result_info.reason = "no_stack_refreshed"
-			SkillStatusData.StackBehavior.REFRESH_DURATION:
-				runtime_status_instance.left_duration = new_duration_base
-				result_info.reason = "duration_refreshed"
-			SkillStatusData.StackBehavior.ADD_DURATION:
-				runtime_status_instance.left_duration += new_duration_base
-				result_info.reason = "duration_added"
-			SkillStatusData.StackBehavior.ADD_STACKS_REFRESH_DURATION:
-				new_stack_count = min(old_stacks + stacks_to_apply_from_effect, status_template.max_stacks)
-				runtime_status_instance.left_duration = new_duration_base
-				result_info.reason = "stacked_duration_refreshed"
-			SkillStatusData.StackBehavior.ADD_STACKS_INDEPENDENT_DURATION:
-				new_stack_count = min(old_stacks + stacks_to_apply_from_effect, status_template.max_stacks)
-				runtime_status_instance.left_duration = max(runtime_status_instance.left_duration, new_duration_base)
-				result_info.reason = "stacked_independent_simplified"
-			
-		if runtime_status_instance.stacks != new_stack_count: 
-			_apply_attribute_modifiers_for_status(runtime_status_instance, false)
-			runtime_status_instance.stacks = new_stack_count
-			_apply_attribute_modifiers_for_status(runtime_status_instance)   
-		
-		result_info.applied_successfully = true
-		if old_stacks != runtime_status_instance.stacks or old_duration != runtime_status_instance.left_duration:
-			status_updated_on_character.emit(self, runtime_status_instance, old_stacks, old_duration)
+		runtime_status_instance = _update_existing_status(
+			status_template, 
+			p_source_char, 
+			duration_override, 
+			stacks_to_apply_from_effect, 
+			result_info
+		)
 	else: # 全新状态添加
-		runtime_status_instance = status_template.duplicate(true) as SkillStatusData
+		runtime_status_instance = _apply_new_status(
+			status_template, 
+			p_source_char, 
+			duration_override, 
+			stacks_to_apply_from_effect, 
+			result_info
+		)
 		if not runtime_status_instance:
-			result_info.reason = "failed_to_duplicate_status_template"
 			return result_info
-			 
-		runtime_status_instance.source_char = p_source_char
-		runtime_status_instance.target_char = self
-		runtime_status_instance.left_duration = duration_override if duration_override > -1 else status_template.duration
-		runtime_status_instance.stacks = clamp(stacks_to_apply_from_effect, 1, status_template.max_stacks)
-		
-		_active_statuses[status_id] = runtime_status_instance
-		_apply_attribute_modifiers_for_status(runtime_status_instance)   
-		result_info.reason = "newly_applied"
-		result_info.applied_successfully = true
-		status_applied_to_character.emit(self, runtime_status_instance)
 
 	result_info.status_instance = runtime_status_instance
-	runtime_status_instance.apply_status()
 	return result_info
 
 ## 移除状态效果
@@ -300,6 +256,118 @@ func remove_skill_status(status_id: StringName, trigger_end_effects: bool = true
 			await bm_ref.apply_effects(end_effects, effect_source, [self])
 	return true
 
+## 检查状态是否被抵抗
+## 遍历当前所有活动状态，检查是否有状态抵抗新状态的添加
+## [param status_template] 要添加的状态模板
+## [param result_info] 返回结果字典，用于填充抵抗原因
+## [return] 如果被抵抗返回 true，否则返回 false
+func _check_status_resistance(status_template: SkillStatusData, result_info: Dictionary) -> bool:
+	for active_status_instance: SkillStatusData in _active_statuses.values():
+		if status_template.is_countered_by(active_status_instance.status_id):
+			result_info.reason = "resisted_by_status_%s" % active_status_instance.status_id
+			return true
+	return false
+
+## 处理状态覆盖逻辑
+## 如果新状态可以覆盖其他状态，则先移除那些被覆盖的状态
+## [param status_template] 要添加的状态模板
+func _handle_status_override(status_template: SkillStatusData) -> void:
+	if not status_template.overrides_states.is_empty():
+		var ids_to_remove_due_to_override: Array[StringName] = []
+		for id_to_override in status_template.overrides_states:
+			if _active_statuses.has(id_to_override):
+				ids_to_remove_due_to_override.append(id_to_override)
+		for id_rem in ids_to_remove_due_to_override:
+			remove_skill_status(id_rem, true) # 移除被覆盖的状态，并触发结束效果
+
+## 更新已存在的状态
+## 处理状态的各种叠加行为，如刷新持续时间、增加层数等
+## [param status_template] 状态模板
+## [param p_source_char] 状态来源角色
+## [param duration_override] 持续时间覆盖
+## [param stacks_to_apply] 要应用的层数
+## [param result_info] 结果信息字典
+## [return] 更新后的状态实例
+func _update_existing_status(status_template: SkillStatusData, p_source_char: Character, 
+		duration_override: int, stacks_to_apply: int, result_info: Dictionary) -> SkillStatusData:
+	var status_id: StringName = status_template.status_id
+	var runtime_status_instance: SkillStatusData = _active_statuses[status_id]
+	var old_stacks: int = runtime_status_instance.stacks
+	var old_duration: int = runtime_status_instance.left_duration
+	
+	runtime_status_instance.source_char = p_source_char
+	var new_duration_base = duration_override if duration_override > -1 else status_template.duration
+	var new_stack_count = runtime_status_instance.stacks
+
+	# 根据不同的堆叠行为处理状态
+	match status_template.stack_behavior:
+		SkillStatusData.StackBehavior.NO_STACK:
+			runtime_status_instance.left_duration = new_duration_base
+			result_info.reason = "no_stack_refreshed"
+		SkillStatusData.StackBehavior.REFRESH_DURATION:
+			runtime_status_instance.left_duration = new_duration_base
+			result_info.reason = "duration_refreshed"
+		SkillStatusData.StackBehavior.ADD_DURATION:
+			runtime_status_instance.left_duration += new_duration_base
+			result_info.reason = "duration_added"
+		SkillStatusData.StackBehavior.ADD_STACKS_REFRESH_DURATION:
+			new_stack_count = min(old_stacks + stacks_to_apply, status_template.max_stacks)
+			runtime_status_instance.left_duration = new_duration_base
+			result_info.reason = "stacked_duration_refreshed"
+		SkillStatusData.StackBehavior.ADD_STACKS_INDEPENDENT_DURATION:
+			new_stack_count = min(old_stacks + stacks_to_apply, status_template.max_stacks)
+			runtime_status_instance.left_duration = max(runtime_status_instance.left_duration, new_duration_base)
+			result_info.reason = "stacked_independent_simplified"
+	
+	# 如果层数变化，需要重新应用属性修改器
+	if runtime_status_instance.stacks != new_stack_count:
+		_apply_attribute_modifiers_for_status(runtime_status_instance, false) # 先移除旧修改器
+		runtime_status_instance.stacks = new_stack_count
+		_apply_attribute_modifiers_for_status(runtime_status_instance) # 再应用新修改器
+	
+	result_info.applied_successfully = true
+	
+	# 如果状态有变化，发出信号
+	if old_stacks != runtime_status_instance.stacks or old_duration != runtime_status_instance.left_duration:
+		status_updated_on_character.emit(self, runtime_status_instance, old_stacks, old_duration)
+	
+	return runtime_status_instance
+
+## 应用全新的状态
+## 当角色不存在该状态时，创建新的状态实例并应用
+## [param status_template] 状态模板
+## [param p_source_char] 状态来源角色
+## [param duration_override] 持续时间覆盖
+## [param stacks_to_apply] 要应用的层数
+## [param result_info] 结果信息字典
+## [return] 创建的状态实例，如果失败则返回 null
+func _apply_new_status(status_template: SkillStatusData, p_source_char: Character, 
+		duration_override: int, stacks_to_apply: int, result_info: Dictionary) -> SkillStatusData:
+	# 创建新的状态实例
+	var runtime_status_instance = status_template.duplicate(true) as SkillStatusData
+	if not runtime_status_instance:
+		result_info.reason = "failed_to_duplicate_status_template"
+		return null
+	
+	# 设置状态属性
+	runtime_status_instance.source_char = p_source_char
+	runtime_status_instance.target_char = self
+	runtime_status_instance.left_duration = duration_override if duration_override > -1 else status_template.duration
+	runtime_status_instance.stacks = clamp(stacks_to_apply, 1, status_template.max_stacks)
+	
+	# 将状态添加到活动状态字典中
+	_active_statuses[status_template.status_id] = runtime_status_instance
+	
+	# 应用属性修改器
+	_apply_attribute_modifiers_for_status(runtime_status_instance)
+	
+	# 设置结果信息并发出信号
+	result_info.reason = "newly_applied"
+	result_info.applied_successfully = true
+	status_applied_to_character.emit(self, runtime_status_instance)
+	
+	return runtime_status_instance
+
 ## 应用/移除一个状态实例的属性修改器
 ## [param runtime_status_inst] 要应用的技能状态实例
 ## [param add] 是否添加修改器，否则移除
@@ -309,8 +377,8 @@ func _apply_attribute_modifiers_for_status(runtime_status_inst: SkillStatusData,
 
 	for modifier_template: SkillAttributeModifier in runtime_status_inst.attribute_modifiers:
 		var mod_instance: SkillAttributeModifier = modifier_template.duplicate(true)
-		mod_instance.magnitude *= runtime_status_inst.stacks 
-		mod_instance._source = runtime_status_inst.get_instance_id() # 使用状态实例ID作为修改器来源
+		mod_instance.magnitude *= runtime_status_inst.stacks
+		mod_instance.set_source(runtime_status_inst) # 使用状态实例ID作为修改器来源
 
 		var attr_to_modify: StringName = mod_instance.attribute_id
 		if not active_attribute_set.get_attribute(attr_to_modify): # 确保角色有此属性
@@ -334,9 +402,7 @@ func process_active_statuses_for_turn_end(p_battle_manager_ref):
 		var status_instance: SkillStatusData = _active_statuses[status_id]
 		if not status_instance.ongoing_effects.is_empty():
 			var effect_source = status_instance.source_char if is_instance_valid(status_instance.source_char) else self
-			if p_battle_manager_ref and p_battle_manager_ref.has_method("_apply_skill_effects_to_targets"):
-				await p_battle_manager_ref._apply_skill_effects_to_targets(
-					status_instance.get_ongoing_effects(), effect_source, [self], null)
+			await p_battle_manager_ref.apply_effects(status_instance.ongoing_effects, effect_source, [self])
 		if not is_alive: break 
 	
 	if not is_alive: return

@@ -7,7 +7,7 @@ func get_processor_id() -> StringName:
 func can_process_effect(effect_data: SkillEffectData) -> bool:
 	return effect_data.effect_type == SkillEffectData.EffectType.DISPEL
 
-func process_effect(effect_data: SkillEffectData, caster: Character, target: Character, _source: Variant) -> Dictionary:
+func process_effect(effect_data: SkillEffectData, source: Character, target: Character) -> Dictionary:
 	var results := { "success": false, "dispelled_count": 0, "dispelled_ids": [] }
 
 	if not is_instance_valid(target):
@@ -21,7 +21,7 @@ func process_effect(effect_data: SkillEffectData, caster: Character, target: Cha
 	
 	# 播放施法/效果触发前视觉
 	var cast_vfx_params = {"dispel_type": SkillStatusData.StatusType.keys()[dispel_target_type]}
-	_request_visual_effect(&"dispel_cast", caster, cast_vfx_params)
+	_request_visual_effect(&"dispel_cast", source, cast_vfx_params)
 
 	if Engine.get_main_loop():
 		await Engine.get_main_loop().process_frame
@@ -64,7 +64,7 @@ func process_effect(effect_data: SkillEffectData, caster: Character, target: Cha
 			_request_visual_effect(effect_data.visual_effect_key, target, results)
 
 		var message = "[color=cyan]%s 从 %s 身上驱散了 %d 个%s效果: %s[/color]" % [
-			caster.character_name, 
+			source.character_name, 
 			target.character_name, 
 			results.dispelled_count, 
 			SkillStatusData.StatusType.keys()[dispel_target_type],
@@ -74,7 +74,7 @@ func process_effect(effect_data: SkillEffectData, caster: Character, target: Cha
 	else:
 		results["reason"] = "no_matching_statuses_to_dispel"
 		var message = "[color=gray]%s 尝试驱散 %s 身上的%s效果，但未找到可驱散的目标。[/color]" % [
-			caster.character_name, 
+			source.character_name, 
 			target.character_name, 
 			SkillStatusData.StatusType.keys()[dispel_target_type]
 		]

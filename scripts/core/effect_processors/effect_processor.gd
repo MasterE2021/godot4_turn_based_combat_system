@@ -13,7 +13,7 @@ func _init(p_battle_manager = null):
 
 ## 处理效果 - 主要接口方法
 ## [return] 处理结果的字典
-func process_effect(_effect: SkillEffectData, _caster: Character, _target: Character, _source: Variant) -> Dictionary:
+func process_effect(_effect: SkillEffectData, _source: Character, _target: Character) -> Dictionary:
 	push_error("EffectProcessor.process_effect() 必须被子类重写")
 	return {}
 

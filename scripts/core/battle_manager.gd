@@ -579,8 +579,8 @@ func _init_effect_processors():
 	# 注册处理器
 	register_effect_processor(DamageEffectProcessor.new(self))
 	register_effect_processor(HealingEffectProcessor.new(self))
-	register_effect_processor(ApplyStatusEffectProcessor.new(self))
-	register_effect_processor(DispelEffectProcessor.new(self))
+	register_effect_processor(ApplyStatusProcessor.new(self))
+	register_effect_processor(DispelStatusProcessor.new(self))
 
 #region 辅助函数
 ## 获取有效的敌方目标

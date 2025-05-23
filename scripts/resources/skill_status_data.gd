@@ -41,9 +41,10 @@ enum StatusType {
 @export var stack_behavior: StackBehavior = StackBehavior.REFRESH_DURATION	## 叠加行为
 
 # 核心影响机制 (数组内为 SkillEffectData 或 SkillAttributeModifier 模板资源)
-@export var _initial_effects: Array[SkillEffectData] = []						## 初始效果
-@export var _ongoing_effects: Array[SkillEffectData] = []						## 持续效果
-@export var _end_effects: Array[SkillEffectData] = []							## 结束效果
+@export var attribute_modifiers : Array[SkillAttributeModifier] = []			## 属性修改器
+@export var initial_effects: Array[SkillEffectData] = []						## 初始效果
+@export var ongoing_effects: Array[SkillEffectData] = []						## 持续效果
+@export var end_effects: Array[SkillEffectData] = []							## 结束效果
 
 # 状态间交互
 @export var overrides_states: Array[StringName] = []							## 此状态应用时会移除的目标状态ID列表
@@ -61,9 +62,6 @@ var source_char: Character   													## 施加此状态的角色
 var target_char: Character   													## 拥有此状态的角色 (方便状态效果内部逻辑访问目标)
 var left_duration: int       													## 剩余持续时间
 var stacks: int = 1          													## 当前叠加层数
-
-signal status_applied
-signal status_ended
 
 #region --- 方法 ---
 func _init(): 
@@ -83,9 +81,9 @@ func get_full_description() -> String:
 		
 	if max_stacks > 1:
 		desc += "最多叠加 %d 层. " % max_stacks
-	if not _initial_effects.is_empty(): desc += "应用时触发效果.\n"
-	if not _ongoing_effects.is_empty(): desc += "每回合触发效果.\n"
-	if not _end_effects.is_empty(): desc += "结束时触发效果.\n"
+	if not initial_effects.is_empty(): desc += "应用时触发效果.\n"
+	if not ongoing_effects.is_empty(): desc += "每回合触发效果.\n"
+	if not end_effects.is_empty(): desc += "结束时触发效果.\n"
 
 	return desc.strip_edges()
 
@@ -94,15 +92,4 @@ func is_countered_by(other_status_id: StringName) -> bool:
 
 func overrides_other_status(other_status_id: StringName) -> bool:
 	return overrides_states.has(other_status_id)
-
-# 便捷的Getter方法
-func get_initial_effects() -> Array[SkillEffectData]: return _initial_effects
-func get_ongoing_effects() -> Array[SkillEffectData]: return _ongoing_effects
-func get_end_effects() -> Array[SkillEffectData]: return _end_effects
-
-func apply_status():
-	status_applied.emit()
-
-func end_status():
-	status_ended.emit()
 #endregion

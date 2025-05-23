@@ -10,11 +10,11 @@ func can_process_effect(effect: SkillEffectData) -> bool:
 	return effect.effect_type == effect.EffectType.DAMAGE
 
 ## 处理伤害效果
-func process_effect(effect: SkillEffectData, caster: Character, target: Character, _source: Variant) -> Dictionary:
+func process_effect(effect: SkillEffectData, source: Character, target: Character) -> Dictionary:
 	var results = {}
 	
 	# 播放施法动画
-	_request_visual_effect("cast", caster, {})
+	_request_visual_effect("cast", source, {})
 	
 	# 等待短暂时间
 	if Engine.get_main_loop():
@@ -25,7 +25,7 @@ func process_effect(effect: SkillEffectData, caster: Character, target: Characte
 		return {}
 		
 	# 计算伤害
-	var damage_result = _calculate_damage(caster, target, effect)
+	var damage_result = _calculate_damage(source, target, effect)
 	var damage = damage_result["damage"]
 	
 	# 播放命中动画，根据克制关系选择不同效果

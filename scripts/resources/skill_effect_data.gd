@@ -5,7 +5,6 @@ class_name SkillEffectData
 enum EffectType {
 	DAMAGE,            		## 伤害
 	HEAL,              		## 治疗
-	MODIFY_ATTRIBUTE,		## 修改属性
 	STATUS,           		## 控制
 	DISPEL,            		## 驱散
 	SPECIAL            		## 特殊效果
@@ -19,17 +18,12 @@ enum EffectType {
 # 伤害效果参数
 @export_group("伤害效果参数", "damage_")
 @export var damage_amount: int = 10     		## 基础伤害值
-# @export var damage_element: int = 0     		## 元素类型
 @export var damage_power_scale: float = 1.0  	## 攻击力加成系数
 
 # 治疗效果参数
 @export_group("治疗效果参数", "heal_")
 @export var heal_amount: int = 10       		## 基础治疗值
 @export var heal_power_scale: float = 0.5  		## 魔法攻击力加成系数
-
-## 修改属性效果参数
-@export_group("修改属性效果参数", "attribute_modifier_")
-@export var attribute_modifier_template: SkillAttributeModifier = null  		## 属性修改模版
 
 ## 应用效果参数
 @export_group("应用效果参数", "status_")
@@ -57,8 +51,6 @@ func get_description() -> String:
 			return _get_damage_description()
 		EffectType.HEAL:
 			return _get_heal_description()
-		EffectType.MODIFY_ATTRIBUTE:
-			return _get_attribute_modifier_description()
 		EffectType.STATUS:
 			return _get_status_description()
 		EffectType.DISPEL:
@@ -71,28 +63,12 @@ func get_description() -> String:
 ## 获取伤害效果描述
 func _get_damage_description() -> String:
 	var amount = damage_amount
-
 	return "造成 %d 点伤害" % [amount]
 
 ## 获取治疗效果描述
 func _get_heal_description() -> String:
 	var amount = heal_amount
 	return "恢复 %d 点生命值" % [amount]
-
-func _get_attribute_modifier_description() -> String:
-	var desc = "\n属性影响:\n"
-	for mod : SkillAttributeModifier in attribute_modifier_template:
-		if is_instance_valid(mod):
-			var op_name: String = "未知操作"
-			match mod.operation:
-				SkillAttributeModifier.ModifierOperation.ADD_ABSOLUTE:
-					op_name = "直接加/减"
-				SkillAttributeModifier.ModifierOperation.OVERRIDE:
-					op_name = "覆盖"
-				SkillAttributeModifier.ModifierOperation.ADD_PERCENTAGE:
-					op_name = "基于基础值计算百分比"
-			desc += "- %s %s %.1f\n" % [op_name, mod.attribute_id, mod.magnitude]
-	return desc.strip_edges()
 
 ## 获取状态效果描述
 func _get_status_description() -> String:
@@ -105,7 +81,6 @@ func _get_status_description() -> String:
 func _get_dispel_description() -> String:
 	var count = dispel_count
 	var is_positive = dispel_is_positive
-	
 	var type_name = "增益" if is_positive else "减益"
 	return "驱散 %d 个%s效果" % [count, type_name]
 
