@@ -138,11 +138,11 @@ func _validate_skill_usability(context: SkillExecutionContext, caster: Character
 				result.reason = "Invalid enemy target"
 				return result
 		SkillData.TargetType.ALLY_ALL: # Renamed from ALL_ALLIES, assumes excludes self
-			actual_targets_for_validation = _get_valid_ally_targets(context, caster, false) # false for exclude self
+			actual_targets_for_validation = get_valid_ally_targets(context, caster, false) # false for exclude self
 		SkillData.TargetType.ALLY_ALL_INC_SELF: # New case for all allies including self
-			actual_targets_for_validation = _get_valid_ally_targets(context, caster, true) # true for include self
+			actual_targets_for_validation = get_valid_ally_targets(context, caster, true) # true for include self
 		SkillData.TargetType.ENEMY_ALL: # Renamed from ALL_ENEMIES
-			actual_targets_for_validation = _get_valid_enemy_targets(context, caster)
+			actual_targets_for_validation = get_valid_enemy_targets(context, caster)
 		# Cases for EVERYONE, RANDOM_ENEMY, RANDOM_ALLY removed as they are not in SkillData.TargetType enum
 		# Their logic needs to be handled elsewhere if still required.
 		_:
@@ -327,11 +327,11 @@ func _determine_execution_targets(context: SkillExecutionContext, caster: Charac
 			if not selected_targets.is_empty() and is_instance_valid(selected_targets[0]) and (selected_targets[0].is_alive or skill.can_target_dead):
 				final_targets.append(selected_targets[0])
 		SkillData.TargetType.ALLY_ALL: # Renamed from ALL_ALLIES, assumes excludes self
-			final_targets = _get_valid_ally_targets(context, caster, false) # false for exclude self
+			final_targets = get_valid_ally_targets(context, caster, false) # false for exclude self
 		SkillData.TargetType.ALLY_ALL_INC_SELF: # New case for all allies including self
-			final_targets = _get_valid_ally_targets(context, caster, true) # true for include self
+			final_targets = get_valid_ally_targets(context, caster, true) # true for include self
 		SkillData.TargetType.ENEMY_ALL: # Renamed from ALL_ENEMIES
-			final_targets = _get_valid_enemy_targets(context, caster)
+			final_targets = get_valid_enemy_targets(context, caster)
 		# Cases for EVERYONE, RANDOM_ENEMY, RANDOM_ALLY removed as they are not in SkillData.TargetType enum
 		# Their logic needs to be handled elsewhere if still required.
 		_:
@@ -367,9 +367,9 @@ func _determine_targets_for_effect(context: SkillExecutionContext, caster: Chara
 			"self_only":
 				effect_targets = [caster] if is_instance_valid(caster) else []
 			"all_allies":
-				effect_targets = _get_valid_ally_targets(context, caster, true)
+				effect_targets = get_valid_ally_targets(context, caster, true)
 			"all_enemies":
-				effect_targets = _get_valid_enemy_targets(context, caster)
+				effect_targets = get_valid_enemy_targets(context, caster)
 			"main_target_and_adjacent":
 				# 这需要位置信息，这里只是示例
 				if not initial_targets.is_empty():
@@ -412,7 +412,7 @@ func _trigger_visual_effect(context: SkillExecutionContext, effect_data: SkillEf
 					context.visual_effects_handler.show_status_text(target, result.special_vfx_text, true)
 
 ## 获取有效的友方目标
-func _get_valid_ally_targets(context: SkillExecutionContext, caster: Character, include_self: bool) -> Array[Character]:
+func get_valid_ally_targets(context: SkillExecutionContext, caster: Character, include_self: bool) -> Array[Character]:
 	var allies = context.character_registry.get_allied_team_for_character(caster, include_self)
 	var valid_targets: Array[Character] = []
 	for ally in allies:
@@ -421,7 +421,7 @@ func _get_valid_ally_targets(context: SkillExecutionContext, caster: Character, 
 	return valid_targets
 
 ## 获取有效的敌方目标
-func _get_valid_enemy_targets(context: SkillExecutionContext, caster: Character) -> Array[Character]:
+func get_valid_enemy_targets(context: SkillExecutionContext, caster: Character) -> Array[Character]:
 	var enemies = context.character_registry.get_opposing_team_for_character(caster)
 	var valid_targets: Array[Character] = []
 	for enemy in enemies:

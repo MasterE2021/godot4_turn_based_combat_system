@@ -54,18 +54,18 @@ func _ready() -> void:
 	battle_manager._start_battle()
 
 # 处理BattleManager发出的信号
-func _on_battle_state_changed(new_state: BattleManager.BattleState) -> void:
+func _on_battle_state_changed(new_state: BattleStateManager.BattleState) -> void:
 	match new_state:
-		BattleManager.BattleState.PLAYER_TURN:
+		BattleStateManager.BattleState.PLAYER_TURN:
 			# 当玩家回合开始时，战斗管理器会通过player_action_required信号通知
 			pass
-		BattleManager.BattleState.ENEMY_TURN:
+		BattleStateManager.BattleState.ENEMY_TURN:
 			# 隐藏所有UI菜单
 			_hide_all_menus()
 			update_battle_info("敌人回合...")
-		BattleManager.BattleState.VICTORY:
+		BattleStateManager.BattleState.VICTORY:
 			update_battle_info("战斗胜利！")
-		BattleManager.BattleState.DEFEAT:
+		BattleStateManager.BattleState.DEFEAT:
 			update_battle_info("战斗失败...")
 
 func _on_turn_changed(character: Character) -> void:
@@ -93,7 +93,7 @@ func _on_enemy_action_executed(attacker: Character, target: Character, damage: i
 
 # UI信号处理函数
 func _on_action_menu_attack_pressed() -> void:
-	if battle_manager.current_state == BattleManager.BattleState.PLAYER_TURN:
+	if battle_manager.state_manager.is_in_state(BattleStateManager.BattleState.PLAYER_TURN):
 		# 选择第一个存活的敌人作为目标
 		var valid_targets = battle_manager.get_valid_enemy_targets(battle_manager.current_turn_character)
 		if !valid_targets.is_empty():
@@ -103,17 +103,18 @@ func _on_action_menu_attack_pressed() -> void:
 			update_battle_info("没有可攻击的目标！")
 
 func _on_action_menu_defend_pressed() -> void:
-	if battle_manager.current_state == BattleManager.BattleState.PLAYER_TURN:
+	if battle_manager.state_manager.is_in_state(BattleStateManager.BattleState.PLAYER_TURN):
 		battle_manager.player_select_action("defend")
 
 func _on_skill_button_pressed() -> void:
-	if battle_manager.current_state == BattleManager.BattleState.PLAYER_TURN:
+	if battle_manager.state_manager.is_in_state(BattleStateManager.BattleState.PLAYER_TURN):
 		_open_skill_menu()
 
 func _on_item_button_pressed() -> void:
-	if battle_manager.current_state == BattleManager.BattleState.PLAYER_TURN:
+	if battle_manager.state_manager.is_in_state(BattleStateManager.BattleState.PLAYER_TURN):
 		update_battle_info("物品功能尚未实现")
 
+## 处理技能选择
 func _on_skill_selected(skill: SkillData) -> void:
 	current_selected_skill = skill
 	
@@ -128,7 +129,8 @@ func _on_skill_selected(skill: SkillData) -> void:
 			
 		SkillData.TargetType.ENEMY_SINGLE:
 			# 显示敌人目标选择菜单
-			var valid_targets := battle_manager.get_valid_enemy_targets(battle_manager.current_turn_character)
+			var caster : Character = battle_manager.turn_order_manager.current_turn_character
+			var valid_targets := battle_manager.get_valid_enemy_targets(caster)
 			if not valid_targets.is_empty():
 				target_selection_menu.show_targets(valid_targets)
 			else:

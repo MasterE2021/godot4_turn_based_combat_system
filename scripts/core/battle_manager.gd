@@ -21,14 +21,95 @@ signal battle_ended(is_victory)
 # 添加额外信号用于与UI交互
 signal player_action_required(character) # 通知UI玩家需要行动
 signal enemy_action_executed(attacker, target, damage) # 敌人执行了行动
-signal character_stats_changed(character) # 角色状态变化
-# 技能相关
-signal skill_executed(caster, targets, skill, results)
-signal effect_applied(effect_type, source, target, result)
 
 func _ready():
 	_init_core_systems()
 	_start_battle()
+
+func get_valid_ally_targets(caster: Character, include_self: bool) -> Array[Character]:
+	var skill_context := SkillSystem.SkillExecutionContext.new(
+		character_registry,
+		visual_effects,
+		state_manager
+	)
+	return SkillSystem.get_valid_ally_targets(skill_context, caster, include_self)
+
+func get_valid_enemy_targets(caster: Character) -> Array[Character]:
+	var skill_context := SkillSystem.SkillExecutionContext.new(
+		character_registry,
+		visual_effects,
+		state_manager
+	)
+	return SkillSystem.get_valid_enemy_targets(skill_context, caster)
+
+## 执行动作
+## [param action_type] 动作类型
+## [param source] 动作执行者
+## [param target] 动作目标
+## [param params] 额外参数（如技能数据、道具数据等）
+## [return] 动作执行结果
+func execute_action(action_type: CharacterCombatComponent.ActionType, source: Character, target = null, params = null) -> Dictionary:
+	if not is_instance_valid(source):
+		push_error("无效的动作执行者")
+		return {"success": false, "error": "无效的动作执行者"}
+	
+	if not source.combat_component:
+		push_error("角色缺少战斗组件")
+		return {"success": false, "error": "角色缺少战斗组件"}
+	
+	# 调用角色战斗组件的执行动作方法
+	var result = await source.combat_component.execute_action(action_type, source, target, params)
+	
+	# 检查战斗是否结束
+	combat_rules.check_battle_end_conditions()
+	
+	return result
+
+## 执行攻击
+## [param attacker] 攻击者
+## [param target] 目标
+## [return] 攻击结果
+func execute_attack(attacker: Character, target: Character) -> Dictionary:
+	return await execute_action(CharacterCombatComponent.ActionType.ATTACK, attacker, target)
+
+## 执行防御
+## [param character] 防御的角色
+## [return] 防御结果
+func execute_defend(character: Character) -> Dictionary:
+	return await execute_action(CharacterCombatComponent.ActionType.DEFEND, character)
+
+## 执行技能
+## [param caster] 施法者
+## [param skill] 技能数据
+## [param targets] 目标列表
+## [return] 技能执行结果
+func execute_skill(caster: Character, skill: SkillData, targets: Array = []) -> Dictionary:
+	var skill_context = SkillSystem.SkillExecutionContext.new(
+		character_registry,
+		visual_effects,
+		state_manager
+	)
+	
+	var params = {
+		"skill": skill,
+		"targets": targets,
+		"skill_context": skill_context
+	}
+	
+	return await execute_action(CharacterCombatComponent.ActionType.SKILL, caster, null, params)
+
+## 执行使用道具
+## [param user] 使用者
+## [param item] 道具数据
+## [param targets] 目标列表
+## [return] 道具使用结果
+func execute_item(user: Character, item, targets: Array) -> Dictionary:
+	var params = {
+		"item": item,
+		"targets": targets
+	}
+	
+	return await execute_action(CharacterCombatComponent.ActionType.ITEM, user, null, params)
 
 ## 初始化核心系统
 func _init_core_systems() -> void:	
@@ -70,6 +151,9 @@ func player_select_action(action_type: String, target = null):
 	# 设置为行动执行状态
 	state_manager.change_state(BattleStateManager.BattleState.ACTION_EXECUTION)
 	
+	# 获取当前回合角色
+	var current_turn_character = turn_order_manager.current_character
+	
 	# 执行选择的行动
 	match action_type:
 		"attack":
@@ -88,46 +172,6 @@ func player_select_action(action_type: String, target = null):
 	
 	# 行动结束后转入回合结束
 	state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
-
-
-#region 辅助函数
-
-## 私有方法: 触发视觉效果
-func _trigger_visual_effect(effect: SkillEffectData, _source: Character, target: Character, result: Dictionary) -> void:
-	match effect.effect_type:
-		SkillEffectData.EffectType.DAMAGE:
-			play_damage_effect(target, {
-				"amount": result.get("amount", 0),
-				"element": result.get("element", 0)
-			})
-		
-		SkillEffectData.EffectType.HEAL:
-			play_heal_effect(target, {
-				"amount": result.get("amount", 0)
-			})
-
-## 请求播放动画
-## [param character] 角色
-## [param animation_name] 动画名称
-func _request_animation(character: Character, animation_name: String) -> void:
-	if character.has_method("play_animation"):
-		character.play_animation(animation_name)
-	else:
-		push_warning("character not has method play_animation!")
-
-## 处理视觉效果请求
-func _on_visual_effect_requested(effect_type: String, target, params: Dictionary = {}):
-	if not is_instance_valid(target):
-		return
-		
-	# 分发到适当的视觉效果方法
-	var effect_method = "play_" + effect_type + "_effect"
-	if has_method(effect_method):
-		call(effect_method, target, params)
-	else:
-		push_warning("BattleManager: 未找到视觉效果方法 play_" + effect_type + "_effect")
-
-#endregion
 
 # 处理战斗状态变化
 func _on_battle_state_changed(old_state, new_state):
@@ -161,10 +205,13 @@ func _on_battle_state_changed(old_state, new_state):
 		BattleStateManager.BattleState.VICTORY:
 			print("胜利!")
 			# 处理胜利后的逻辑
+			battle_ended.emit(true)
 			
+
 		BattleStateManager.BattleState.DEFEAT:
 			print("失败!")
 			# 处理失败后的逻辑
+			battle_ended.emit(false)
 			
 		BattleStateManager.BattleState.ENEMY_TURN:
 			# 执行敌人AI
@@ -239,18 +286,17 @@ func _next_turn() -> void:
 		combat_rules.check_battle_end_conditions()
 		return
 	
-	current_turn_character = next_character
-	turn_changed.emit(current_turn_character)
+	turn_changed.emit(next_character)
 	
-	print(current_turn_character.character_name, " 的回合")
+	print(next_character.character_name, " 的回合")
 	
 	# 回合开始时重置防御状态
-	current_turn_character.set_defending(false)
+	next_character.set_defending(false)
 	
 	# 判断是玩家还是敌人的回合
-	if character_registry.is_player_character(current_turn_character):
+	if character_registry.is_player_character(next_character):
 		state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
-		player_action_required.emit(current_turn_character)
+		player_action_required.emit(next_character)
 	else:
 		state_manager.change_state(BattleStateManager.BattleState.ENEMY_TURN)
 		_execute_enemy_ai()
@@ -267,12 +313,16 @@ func _execute_enemy_ai() -> void:
 	for player in character_registry.get_player_team(true):
 		target = player
 		break
-			
+
+	var damage := 0	
 	if target:
 		state_manager.change_state(BattleStateManager.BattleState.ACTION_EXECUTION)
 		print(current_turn_character.character_name, " 选择攻击 ", target.character_name)
-		await execute_attack(current_turn_character, target)
+		var result := await execute_action(CharacterCombatComponent.ActionType.ATTACK, current_turn_character, target)
+		damage = result.get("damage")
 		state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
 	else:
 		print("敌人找不到可攻击的目标")
 		state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
+
+	enemy_action_executed.emit(turn_order_manager.current_character, target, damage)
