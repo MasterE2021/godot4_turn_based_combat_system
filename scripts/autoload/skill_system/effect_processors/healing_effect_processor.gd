@@ -3,7 +3,7 @@ class_name HealingEffectProcessor
 
 ## 获取处理器ID
 func get_processor_id() -> StringName:
-	return "heal"
+	return &"heal"
 
 ## 判断是否可以处理该效果
 func can_process_effect(effect: SkillEffectData) -> bool:
@@ -13,9 +13,6 @@ func can_process_effect(effect: SkillEffectData) -> bool:
 func process_effect(effect: SkillEffectData, source: Character, target: Character) -> Dictionary:
 	var results = {}
 	
-	# 播放施法动画
-	_request_visual_effect("heal_cast", source, {})
-	
 	# 等待短暂时间
 	if Engine.get_main_loop():
 		await Engine.get_main_loop().process_frame
@@ -23,21 +20,11 @@ func process_effect(effect: SkillEffectData, source: Character, target: Characte
 	# 计算治疗量
 	var heal_amount = _calculate_healing(source, target, effect)
 	
-	# 播放治疗效果
-	_request_visual_effect("heal", target, {})
-	
-	# 生成治疗数字
-	_request_visual_effect("damage_number", target, {
-		"damage": heal_amount,
-		"color": Color(0.3, 1.0, 0.3),
-		"prefix": "+"
-	})
+	# 播放治疗效果并生成治疗数字
+	_request_visual_effect(&"heal", target, {"amount": heal_amount})
 	
 	# 应用治疗
 	target.heal(heal_amount)
-	
-	# 角色状态变化信号
-	_battle_manager.character_stats_changed.emit(target)
 	
 	# 记录结果
 	results["heal_amount"] = heal_amount

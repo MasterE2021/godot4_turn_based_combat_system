@@ -1,31 +1,6 @@
 extends Node2D
 class_name Character
 
-@export var character_data: CharacterData
-
-#region --- 常用属性的便捷Getter ---
-var current_hp: float:
-	get: return active_attribute_set.get_current_value(&"CurrentHealth") if active_attribute_set else 0.0
-var max_hp: float:
-	get: return active_attribute_set.get_current_value(&"MaxHealth") if active_attribute_set else 0.0
-var current_mp: float:
-	get: return active_attribute_set.get_current_value(&"CurrentMana") if active_attribute_set else 0.0
-var max_mp: float:
-	get: return active_attribute_set.get_current_value(&"MaxMana") if active_attribute_set else 0.0
-var attack_power: float:
-	get: return active_attribute_set.get_current_value(&"AttackPower") if active_attribute_set else 0.0
-var defense_power: float:
-	get: return active_attribute_set.get_current_value(&"DefensePower") if active_attribute_set else 0.0
-var speed: float:
-	get: return active_attribute_set.get_current_value(&"Speed") if active_attribute_set else 0.0
-var magic_attack : float:
-	get: return active_attribute_set.get_current_value(&"MagicAttack") if active_attribute_set else 0.0
-var magic_defense : float:
-	get: return active_attribute_set.get_current_value(&"MagicDefense") if active_attribute_set else 0.0
-var character_name : StringName:
-	get: return character_data.character_name if character_data else "" 
-#endregion
-
 # 引用场景中的节点
 @onready var hp_bar : ProgressBar = %HPBar
 @onready var hp_label := %HPLabel
@@ -34,26 +9,76 @@ var character_name : StringName:
 @onready var name_label := $Container/NameLabel
 @onready var character_rect := $Container/CharacterRect
 @onready var defense_indicator : DefenseIndicator = $DefenseIndicator
+@onready var animation_player: AnimationPlayer = %AnimationPlayer
+# 组件引用
+@onready var combat_component: CharacterCombatComponent = %CharacterCombatComponent
+@onready var skill_component: CharacterSkillComponent = %CharacterSkillComponent
 
-var is_defending: bool = false							## 防御状态标记
-var is_alive : bool = true:								## 生存状态标记
+#region --- 常用属性的便捷Getter ---
+var current_hp: float:
+	get: return skill_component.get_current_value(&"CurrentHealth") if skill_component else 0.0
+	set(value): assert(false, "cannot set current_hp")
+var max_hp: float:
+	get: return skill_component.get_current_value(&"MaxHealth") if skill_component else 0.0
+	set(value): assert(false, "cannot set max_hp")
+var current_mp: float:
+	get: return skill_component.get_current_value(&"CurrentMana") if skill_component else 0.0
+	set(value): assert(false, "cannot set current_mp")
+var max_mp: float:
+	get: return skill_component.get_current_value(&"MaxMana") if skill_component else 0.0
+	set(value): assert(false, "cannot set max_mp")
+var attack_power: float:
+	get: return skill_component.get_current_value(&"AttackPower") if skill_component else 0.0
+	set(value): assert(false, "cannot set attack_power")
+var defense_power: float:
+	get: return skill_component.get_current_value(&"DefensePower") if skill_component else 0.0
+	set(value): assert(false, "cannot set defense_power")
+var speed: float:
+	get: return skill_component.get_current_value(&"Speed") if skill_component else 0.0
+	set(value): assert(false, "cannot set speed")
+var magic_attack : float:
+	get: return skill_component.get_current_value(&"MagicAttack") if skill_component else 0.0
+	set(value): assert(false, "cannot set magic_attack")
+var magic_defense : float:
+	get: return skill_component.get_current_value(&"MagicDefense") if skill_component else 0.0
+	set(value): assert(false, "cannot set magic_defense")
+var character_name : StringName:
+	get: return character_data.character_name if character_data else "" 
+	set(value): assert(false, "cannot set character_name")
+#endregion
+
+@export var character_data: CharacterData
+
+# 属性委托给战斗组件
+var is_defending: bool:
+	get: return combat_component.is_defending if combat_component else false
+	set(value): if combat_component: combat_component.set_defending(value)
+var is_alive : bool = true:							## 生存状态标记
 	get: return current_hp > 0
-var active_attribute_set: SkillAttributeSet = null		## 运行时角色实际持有的AttributeSet实例 (通过模板duplicate而来)
 
-signal character_defeated(character: Character)
+# 信号 - 这些信号将转发组件的信号
+signal character_defeated
 signal health_changed(current_hp: float, max_hp: float, character: Character)
 signal mana_changed(current_mp: float, max_mp: float, character: Character)
+signal status_applied_to_character(character: Character, status_instance: SkillStatusData)
+signal status_removed_from_character(character: Character, status_id: StringName, status_instance_data_before_removal: SkillStatusData)
+signal status_updated_on_character(character: Character, status_instance: SkillStatusData, old_stacks: int, old_duration: int)
 
-func _ready():
+func _ready() -> void:
+	# 初始化防御指示器
+	defense_indicator.visible = false
+	
+	# 初始化角色数据
 	if character_data:
-		initialize_from_data(character_data)
+		_initialize_from_data(character_data)
 	else:
 		push_error("角色场景 " + name + " 没有分配CharacterData!")
-
-	# 链接AttributeSet到Character
-	active_attribute_set.current_value_changed.connect(_on_attribute_current_value_changed)
-	active_attribute_set.base_value_changed.connect(_on_attribute_base_value_changed)
 	
+	# 初始化角色动画
+	_setup_animations()
+	# 初始化组件
+	_init_components()
+
 	# 初始化UI显示
 	_update_name_display()
 	_update_health_display()
@@ -61,80 +86,106 @@ func _ready():
 
 	print("%s initialized. HP: %.1f/%.1f, Attack: %.1f" % [character_data.character_name, current_hp, max_hp, attack_power])
 
+## 初始化组件
+func _init_components() -> void:
+	if not combat_component:
+		push_error("战斗组件未初始化！")
+		return
+	if not skill_component:
+		push_error("技能组件未初始化！")
+		return
+	
+	# 连接组件信号
+	combat_component.defending_changed.connect(_on_defending_changed)
+	combat_component.character_defeated.connect(_on_character_defeated)
+
+	skill_component.status_applied.connect(func(character, status_instance): 
+		status_applied_to_character.emit(character, status_instance))
+		
+	skill_component.status_removed.connect(func(character, status_id, status_instance): 
+		status_removed_from_character.emit(character, status_id, status_instance))
+		
+	skill_component.status_updated.connect(func(character, status_instance, old_stacks, old_duration): 
+		status_updated_on_character.emit(character, status_instance, old_stacks, old_duration))
+
+	skill_component.attribute_base_value_changed.connect(_on_attribute_base_value_changed)
+	skill_component.attribute_current_value_changed.connect(_on_attribute_current_value_changed)
+
 ## 初始化玩家数据
-func initialize_from_data(data: CharacterData):
+func _initialize_from_data(data: CharacterData):
 	# 保存数据引用
 	character_data = data
 	
-	character_name = character_data.character_name
-	# 为每个Character实例创建独立的AttributeSet
-	# 这是因为AttributeSet本身是一个Resource, 直接使用会导致所有实例共享数据
-	active_attribute_set = character_data.attribute_set_resource.duplicate(true)
-	if not active_attribute_set:
-		push_error("无法创建AttributeSet实例！")
-		return
-	
-	# 初始化AttributeSet，这将创建并配置所有属性实例
-	active_attribute_set.initialize_set()
-	
+	skill_component.initialize(character_data.attribute_set_resource, character_data.skills)
 	print(character_name + " 初始化完毕，HP: " + str(current_hp) + "/" + str(max_hp))
 
 ## 设置防御状态
 func set_defending(value: bool) -> void:
-	is_defending = value
-	if defense_indicator:
-		if is_defending:
-			defense_indicator.show_indicator()
-		else:
-			defense_indicator.hide_indicator()
+	if combat_component:
+		combat_component.set_defending(value)
 
 ## 伤害处理方法
-func take_damage(base_damage: float) -> float:
-	var final_damage: float = base_damage
+func take_damage(base_damage: float, source: Variant = null) -> float:
+	if combat_component:
+		return combat_component.take_damage(base_damage, source)
+	return 0.0
 
-	# 如果处于防御状态，则减免伤害
-	if is_defending:
-		final_damage = round(final_damage * 0.5)
-		print(character_name + " 正在防御，伤害减半！")
-		set_defending(false)	# 防御效果通常在受到一次攻击后解除
-
-	if final_damage <= 0: 
-		return 0
-
-	active_attribute_set.set_current_value("CurrentHealth", active_attribute_set.get_current_value("CurrentHealth") - final_damage)
-	return final_damage
-
-func heal(amount: int) -> int:
-	active_attribute_set.set_current_value("CurrentHealth", active_attribute_set.get_current_value("CurrentHealth") + amount)
-	return amount
-
-func use_mp(amount: int) -> bool:
-	if current_mp < amount:
-		return false
-	active_attribute_set.set_current_value("CurrentMana", current_mp - amount)
-	return true
+func heal(amount: float, source: Variant = null) -> float:
+	if combat_component:
+		return combat_component.heal(amount, source)
+	return 0.0
 
 ## 回合开始时重置标记
 func reset_turn_flags() -> void:
-	set_defending(false)
+	if combat_component:
+		combat_component.reset_turn_flags()
 
 ## 是否足够释放技能MP
 func has_enough_mp_for_any_skill() -> bool:
-	for skill in character_data.skills:
-		if current_mp >= skill.mp_cost:
-			return true
+	if skill_component:
+		return skill_component.has_enough_mp_for_any_skill()
 	return false
 
-## 播放动画
-func play_animation(animation_name: String) -> void:
-	print("假装播放了动画：", animation_name)
+## 检查是否有足够的MP使用指定技能
+func has_enough_mp_for_skill(skill: SkillData) -> bool:
+	if skill_component:
+		return skill_component.has_enough_mp_for_skill(skill)
+	return false
 
-## 死亡处理方法
-func _die(death_source: Variant = null):
-	# is_alive 的getter会自动更新，但这里可以执行死亡动画、音效、移除出战斗等逻辑
-	print_rich("[color=red][b]%s[/b] has been defeated by %s![/color]" % [character_data.character_name, death_source])
-	character_defeated.emit(self)
-	modulate = Color(0.5, 0.5, 0.5, 0.5) # 变灰示例
+## 使用MP
+func use_mp(amount: float, source: Variant = null) -> bool:
+	if skill_component:
+		return skill_component.use_mp(amount, source)
+	return false
+
+## 恢复MP
+func restore_mp(amount: float, source: Variant = null) -> float:
+	if skill_component:
+		return skill_component.restore_mp(amount, source)
+	return 0.0
+
+## 播放动画
+## [param animation_name] 动画名称
+## [return] 返回一个信号，动画播放完成时会触发
+func play_animation(animation_name: StringName) -> void:
+	print("%s 播放动画：%s" % [character_name, animation_name])
+	
+	# 检查是否有对应的动画
+	if animation_player.has_animation(animation_name):
+		# 直接播放动画
+		animation_player.play(animation_name)
+		await animation_player.animation_finished
+	else:
+		push_warning("动画 %s 不存在" % animation_name)
+		
+## 设置角色动画
+func _setup_animations() -> void:
+	# 使用动画辅助类设置原型动画
+	if animation_player:
+		var CharacterAnimations = load("res://scripts/core/character/character_animations.gd")
+		CharacterAnimations.setup_prototype_animations(animation_player)
+	else:
+		push_error("找不到AnimationPlayer组件，无法设置动画")
 
 #region --- UI 更新辅助方法 ---
 func _update_name_display() -> void:
@@ -142,18 +193,18 @@ func _update_name_display() -> void:
 		name_label.text = character_data.character_name
 
 func _update_health_display() -> void:
-	if hp_bar and active_attribute_set: # 确保active_attribute_set已初始化
-		var current_val = active_attribute_set.get_current_value(&"CurrentHealth")
-		var max_val = active_attribute_set.get_current_value(&"MaxHealth")
+	if hp_bar and skill_component: # 确保active_attribute_set已初始化
+		var current_val = skill_component.get_current_value(&"CurrentHealth")
+		var max_val = skill_component.get_current_value(&"MaxHealth")
 		hp_bar.max_value = max_val
 		hp_bar.value = current_val
 		# 在血条上显示具体数值
 		hp_label.text = "%d/%d" % [roundi(current_val), roundi(max_val)]
 
 func _update_mana_display() -> void:
-	if mp_bar and active_attribute_set: # 确保active_attribute_set已初始化
-		var current_val = active_attribute_set.get_current_value(&"CurrentMana")
-		var max_val = active_attribute_set.get_current_value(&"MaxMana")
+	if mp_bar and skill_component: # 确保active_attribute_set已初始化
+		var current_val = skill_component.get_current_value(&"CurrentMana")
+		var max_val = skill_component.get_current_value(&"MaxMana")
 		mp_bar.max_value = max_val
 		mp_bar.value = current_val
 		# 在法力条上显示具体数值
@@ -161,14 +212,13 @@ func _update_mana_display() -> void:
 
 #endregion
 
+#region --- 信号处理 ---
 ## 当AttributeSet中的属性当前值变化时调用
 func _on_attribute_current_value_changed(attribute_instance: SkillAttribute, old_value: float, new_value: float, source: Variant):
 	print_rich("[b]%s[/b]'s [color=yellow]%s[/color] changed from [color=red]%.1f[/color] to [color=green]%.1f[/color] (Source: %s)" % [character_data.character_name, attribute_instance.display_name, old_value, new_value, source])
 	if attribute_instance.attribute_name == &"CurrentHealth":
 		health_changed.emit(new_value, max_hp, self)
 		_update_health_display()
-		if new_value <= 0.0 and old_value > 0.0: # 从存活到死亡
-			_die(source)
 	elif attribute_instance.attribute_name == &"MaxHealth":
 		# MaxHealth变化也需要通知UI更新，并可能影响CurrentHealth的钳制（已在AttributeSet钩子中处理）
 		health_changed.emit(current_hp, new_value, self)
@@ -187,3 +237,19 @@ func _on_attribute_base_value_changed(attribute_instance: SkillAttribute, _old_v
 	# 但如果UI需要特别区分显示基础值和当前值，可以在这里做处理
 	if attribute_instance.attribute_name == &"MaxHealth": # 例如基础MaxHealth变化
 		_update_health_display() # 确保UI同步
+	
+func _on_defending_changed(value: bool):
+	if not defense_indicator:
+		return
+	if value:
+		defense_indicator.show_indicator()
+	else:
+		defense_indicator.hide_indicator()
+
+func _on_character_defeated():
+	if defense_indicator:
+		defense_indicator.hide_indicator()
+	modulate = Color(0.5, 0.5, 0.5, 0.5) # 变灰示例
+	character_defeated.emit()
+
+#endregion

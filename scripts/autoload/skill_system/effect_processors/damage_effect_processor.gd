@@ -3,18 +3,15 @@ class_name DamageEffectProcessor
 
 ## 获取处理器ID
 func get_processor_id() -> StringName:
-	return "damage"
+	return &"damage"
 
 ## 检查是否可以处理指定效果类型
 func can_process_effect(effect: SkillEffectData) -> bool:
 	return effect.effect_type == effect.EffectType.DAMAGE
 
 ## 处理伤害效果
-func process_effect(effect: SkillEffectData, caster: Character, target: Character) -> Dictionary:
+func process_effect(effect: SkillEffectData, source: Character, target: Character) -> Dictionary:
 	var results = {}
-	
-	# 播放施法动画
-	_request_visual_effect("cast", caster, {})
 	
 	# 等待短暂时间
 	if Engine.get_main_loop():
@@ -25,31 +22,17 @@ func process_effect(effect: SkillEffectData, caster: Character, target: Characte
 		return {}
 		
 	# 计算伤害
-	var damage_result = _calculate_damage(caster, target, effect)
+	var damage_result = _calculate_damage(source, target, effect)
 	var damage = damage_result["damage"]
 	
 	# 播放命中动画，根据克制关系选择不同效果
-	#var hit_params = {"element": effect.damage_element}
-	var hit_params = {}
+	var hit_params = {"amount": damage}
 	
-	#if damage_result["is_effective"]:
-		## 克制效果
-		#_request_visual_effect("effective_hit", target, hit_params)
-		## 使用自定义颜色和前缀
-		#_request_visual_effect("damage_number", target, {"damage": damage, "color": Color(1.0, 0.7, 0.0), "prefix": "克制! "})
-	#elif damage_result["is_ineffective"]:
-		## 抵抗效果
-		#_request_visual_effect("ineffective_hit", target, hit_params)
-		#_request_visual_effect("damage_number", target, {"damage": damage, "color": Color(0.5, 0.5, 0.5), "prefix": "抵抗 "})
-	#else:
 	# 普通效果
-	_request_visual_effect("hit", target, hit_params)
-	_request_visual_effect("damage_number", target, {"damage": damage, "color": Color.RED})
+	_request_visual_effect(&"damage", target, hit_params)
 	
 	# 应用伤害
 	var actual_damage = target.take_damage(damage)
-	
-	_battle_manager.character_stats_changed.emit(target)
 	
 	# 记录结果
 	results["damage"] = actual_damage

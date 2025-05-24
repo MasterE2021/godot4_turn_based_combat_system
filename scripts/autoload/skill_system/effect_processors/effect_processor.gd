@@ -4,16 +4,11 @@ class_name EffectProcessor
 ## 效果处理器基类
 ## 所有具体效果处理器都应继承此类，并实现相应的方法
 
-# 系统引用
-var _battle_manager : BattleManager = null
-
-## 构造函数
-func _init(p_battle_manager = null):
-	_battle_manager = p_battle_manager
-
 ## 处理效果 - 主要接口方法
 ## [return] 处理结果的字典
-func process_effect(_effect: SkillEffectData, _source: Character, _target: Character) -> Dictionary:
+func process_effect(_effect: SkillEffectData, source: Character, _target: Character) -> Dictionary:
+	# 延迟一帧执行
+	await source.get_tree().process_frame
 	push_error("EffectProcessor.process_effect() 必须被子类重写")
 	return {}
 
@@ -35,13 +30,5 @@ func can_process_effect(_effect: SkillEffectData) -> bool:
 ## [param target] 目标角色
 ## [param params] 视觉效果参数
 ## 发送视觉效果请求
-func _request_visual_effect(effect_type: StringName, target, params: Dictionary = {}):
-	if not _battle_manager or not is_instance_valid(target):
-		return
-		
-	# 分发到适当的视觉效果方法
-	if _battle_manager.has_method("play_" + effect_type + "_effect"):
-		var method = "play_" + effect_type + "_effect"
-		_battle_manager.call(method, target, params)
-	else:
-		push_warning("SkillSystem: 未找到视觉效果方法 play_" + effect_type + "_effect")
+func _request_visual_effect(effect_type: StringName, target, params: Dictionary = {}) -> void:
+	SkillSystem.request_visual_effect(effect_type, target, params)

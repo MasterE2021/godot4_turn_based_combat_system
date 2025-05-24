@@ -47,6 +47,14 @@ func remove_modifier_internal(modifier: SkillAttributeModifier):
 		_recalculate_current_value()
 		# print("Removed modifier %s from %s" % [modifier, attribute_name])
 
+## 获取当前激活的修饰符列表
+func get_active_modifiers() -> Array[SkillAttributeModifier]:
+	return _active_modifiers
+
+## 是否有Modifier
+func has_modifier(modifier: SkillAttributeModifier) -> bool:
+	return modifier in _active_modifiers
+
 ## (由AttributeSet调用) 设置基础值
 func set_base_value_internal(new_base_value: float):
 	base_value = new_base_value
