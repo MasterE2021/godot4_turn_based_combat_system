@@ -49,7 +49,7 @@ func process_effect(effect: SkillEffectData, source: Character, target: Characte
 	# 应用伤害
 	var actual_damage = target.take_damage(damage)
 	
-	_battle_manager.character_stats_changed.emit(target)
+	_skill_system.character_stats_changed.emit(target)
 	
 	# 记录结果
 	results["damage"] = actual_damage

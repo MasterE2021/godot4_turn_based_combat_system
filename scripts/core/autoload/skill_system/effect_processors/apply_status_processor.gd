@@ -46,8 +46,8 @@ func process_effect(effect_data: SkillEffectData, source: Character, target: Cha
 
 			# 状态成功应用/更新后，触发其初始效果
 			if not applied_status_instance.initial_effects.is_empty():
-				if _battle_manager and _battle_manager.has_method("_apply_skill_effects_to_targets"):
-					await _battle_manager._apply_skill_effects_to_targets(
+				if _skill_system and _skill_system.has_method("_apply_skill_effects_to_targets"):
+					await _skill_system._apply_skill_effects_to_targets(
 						applied_status_instance.get_initial_effects(),
 						applied_status_instance.source_char, 
 						[target]

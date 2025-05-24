@@ -1,23 +1,26 @@
 extends Node
 class_name CombatRuleManager
 
+## 战斗规则管理器
+## 负责管理战斗规则和状态
+## 包括回合管理、胜负判断等
+
 # 引用 CharacterRegistryManager (通常需要它来检查队伍状态)
-var character_registry: CharacterRegistryManager 
+var character_registry: BattleCharacterRegistryManager 
 
 # 战斗状态信号
-signal player_victory
-signal player_defeat
-# signal battle_draw # 如果有平局条件
+signal player_victory	## 玩家胜利
+signal player_defeat	## 玩家失败
 
 # 可配置的规则
-@export var max_turns: int = -1 # 最大回合数，-1表示无限制
-var current_turn_count: int = 0
+@export var max_turns: int = -1 		## 最大回合数，-1表示无限制
+var current_turn_count: int = 0			## 当前回合数
 
 ## 初始化，在 BattleManager 中获取其他模块的引用
-## [param registry] CharacterRegistryManager 实例
-func initialize(registry: CharacterRegistryManager) -> void:
+## [param registry] BattleCharacterRegistryManager 实例
+func initialize(registry: BattleCharacterRegistryManager) -> void:
 	if not registry:
-		push_error("CombatRuleManager requires a CharacterRegistryManager reference.")
+		push_error("CombatRuleManager requires a BattleCharacterRegistryManager reference.")
 		return
 	character_registry = registry
 	current_turn_count = 0
@@ -40,7 +43,7 @@ func on_turn_started(turn_number: int) -> void:
 	# 这里可以添加每回合开始时触发的特殊规则或环境效果
 	# e.g., apply_global_battlefield_effect()
 
-## 在每个回合结束时调用，用于检查胜负条件
+## 用于检查胜负条件
 ## [return] 是否战斗已结束
 func check_battle_end_conditions() -> bool: # 返回true如果战斗已结束
 	if not character_registry:

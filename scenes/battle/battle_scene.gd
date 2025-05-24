@@ -51,7 +51,7 @@ func _ready() -> void:
 	battle_manager.enemy_action_executed.connect(_on_enemy_action_executed)
 
 	# 启动战斗
-	battle_manager.start_battle()
+	battle_manager._start_battle()
 
 # 处理BattleManager发出的信号
 func _on_battle_state_changed(new_state: BattleManager.BattleState) -> void:

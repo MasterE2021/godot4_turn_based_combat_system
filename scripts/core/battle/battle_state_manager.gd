@@ -1,6 +1,11 @@
 extends Node
 class_name BattleStateManager
 
+## 战斗状态管理器
+## 管理战斗流程的各个状态
+## 状态切换时会触发_on_exit_state和_on_enter_state
+
+## 战斗状态枚举
 enum BattleState {
 	IDLE,           				# 战斗未开始或已结束的空闲状态
 	BATTLE_START,   				# 战斗初始化阶段
@@ -12,9 +17,9 @@ enum BattleState {
 	VICTORY,        				# 战斗胜利
 	DEFEAT          				# 战斗失败
 }
-
+## 当前状态
 var current_state: BattleState = BattleState.IDLE
-
+## 状态变化信号
 signal state_changed(old_state, new_state)
 
 ## 切换到指定状态

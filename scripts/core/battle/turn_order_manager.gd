@@ -1,22 +1,34 @@
 extends Node
 class_name TurnOrderManager
 
+## 回合管理器
+## 负责管理战斗回合的顺序和流程
+## 包括构建回合队列、获取下一个角色、检查角色位置等
+
 var turn_queue: Array[Character] = []
 var current_character: Character = null
+
+var _character_registry: BattleCharacterRegistryManager
 
 signal turn_changed(character)
 signal round_ended
 
-func build_queue(player_characters: Array[Character], enemy_characters: Array[Character]) -> void:
+func initialize(character_registry: BattleCharacterRegistryManager) -> void:
+	if not character_registry:
+		push_error("TurnOrderManager requires a BattleCharacterRegistryManager reference.")
+		return
+	_character_registry = character_registry
+
+func build_queue() -> void:
 	turn_queue.clear()
 	
 	# 收集所有存活角色
 	var all_characters: Array[Character] = []
-	for player in player_characters:
+	for player in _character_registry.get_player_team(true):
 		if player.is_alive:
 			all_characters.append(player)
 			
-	for enemy in enemy_characters:
+	for enemy in _character_registry.get_enemy_team(true):
 		if enemy.is_alive:
 			all_characters.append(enemy)
 	

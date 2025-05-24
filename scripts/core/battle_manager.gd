@@ -4,19 +4,11 @@ class_name BattleManager
 const DAMAGE_NUMBER_SCENE : PackedScene = preload("res://scenes/ui/damage_number.tscn")
 
 # 核心系统引用
+var character_registry: BattleCharacterRegistryManager		## 角色注册管理器
 var state_manager: BattleStateManager
-var character_registry: CharacterRegistryManager
-var skill_system: SkillSystem
 var visual_effects: BattleVisualEffects
 var combat_rules: CombatRuleManager
-
-# 战斗参与者 (这些可以迁移到 CharacterRegistryManager)
-var player_characters: Array[Character] = []
-var enemy_characters: Array[Character] = []
-
-# 回合顺序管理
-var turn_queue: Array = []
-var current_turn_character: Character = null
+var turn_order_manager: TurnOrderManager					## 回合顺序管理器
 
 ## 当前选中的技能
 var current_selected_skill : SkillData = null
@@ -36,70 +28,37 @@ signal effect_applied(effect_type, source, target, result)
 
 func _ready():
 	_init_core_systems()
-	_init_effect_processors()
+	_start_battle()
 
 ## 初始化核心系统
-func _init_core_systems() -> void:
+func _init_core_systems() -> void:	
+	# 创建角色注册管理器
+	character_registry = BattleCharacterRegistryManager.new()
+	add_child(character_registry)
+	character_registry.name = "BattleCharacterRegistryManager"
+	character_registry.initialize()
+
 	# 创建状态管理器
 	state_manager = BattleStateManager.new()
 	add_child(state_manager)
+	state_manager.name = "BattleStateManager"
 	state_manager.state_changed.connect(_on_battle_state_changed)
-	
-	# 创建角色注册管理器
-	character_registry = CharacterRegistryManager.new()
-	add_child(character_registry)
-	
-	# 创建技能系统
-	skill_system = SkillSystem.new()
-	add_child(skill_system)
-	skill_system.character_registry = character_registry
-	
+
+	# 创建回合管理器
+	turn_order_manager = TurnOrderManager.new()
+	add_child(turn_order_manager)
+	turn_order_manager.name = "TurnOrderManager"
+	turn_order_manager.initialize(character_registry)
+
 	# 创建视觉效果系统
 	visual_effects = BattleVisualEffects.new()
 	add_child(visual_effects)
-	skill_system.visual_effects = visual_effects
+	visual_effects.initialize(DAMAGE_NUMBER_SCENE)
 	
 	# 创建战斗规则管理器
 	combat_rules = CombatRuleManager.new()
 	add_child(combat_rules)
 	combat_rules.initialize(character_registry)
-
-# 开始战斗
-func start_battle() -> void:
-	print("战斗开始!")
-
-	# 清空角色列表
-	player_characters.clear()
-	enemy_characters.clear()
-
-	# 自动查找并注册战斗场景中的角色
-	register_characters()
-	
-	if player_characters.is_empty() or enemy_characters.is_empty():
-		push_error("无法开始战斗：缺少玩家或敌人!")
-		return
-	
-	state_manager.change_state(BattleStateManager.BattleState.BATTLE_START)
-
-# 注册战斗场景中的角色
-func register_characters():
-	# 查找战斗场景中的所有角色
-	var player_area = get_node_or_null("../PlayerArea")
-	var enemy_area = get_node_or_null("../EnemyArea")
-	
-	if player_area:
-		for child in player_area.get_children():
-			if child is Character:
-				add_player_character(child)
-				_subscribe_to_character_signals(child)
-	
-	if enemy_area:
-		for child in enemy_area.get_children():
-			if child is Character:
-				add_enemy_character(child)
-				_subscribe_to_character_signals(child)
-	
-	print("已注册 ", player_characters.size(), " 名玩家角色和 ", enemy_characters.size(), " 名敌人")
 
 # 玩家选择行动 - 由BattleScene调用
 func player_select_action(action_type: String, target = null):
@@ -130,458 +89,8 @@ func player_select_action(action_type: String, target = null):
 	# 行动结束后转入回合结束
 	state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
 
-# 执行敌人AI
-func execute_enemy_ai() -> void:
-	if not state_manager.is_in_state(BattleStateManager.BattleState.ENEMY_TURN) or current_turn_character == null:
-		return
-		
-	# 简单的AI逻辑：总是攻击第一个存活的玩家角色
-	var target = null
-	for player in player_characters:
-		if player.current_hp > 0:
-			target = player
-			break
-			
-	if target:
-		state_manager.change_state(BattleStateManager.BattleState.ACTION_EXECUTION)
-		print(current_turn_character.character_name, " 选择攻击 ", target.character_name)
-		await execute_attack(current_turn_character, target)
-		state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
-	else:
-		print("敌人找不到可攻击的目标")
-		state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
 
-# 执行攻击
-func execute_attack(attacker: Character, target: Character) -> void:
-	if attacker == null or target == null:
-		return
-		
-	print(attacker.character_name, " 攻击 ", target.character_name)
-	
-	# 简单的伤害计算
-	var damage = target.take_damage(attacker.attack_power - target.defense_power)
-	
-	# 发出敌人行动执行信号
-	if enemy_characters.has(attacker):
-		enemy_action_executed.emit(attacker, target, damage)
-		
-	# 发出角色状态变化信号
-	character_stats_changed.emit(target)
-
-	# 显示伤害数字
-	spawn_damage_number(target.global_position, damage, Color.RED)
-	
-	print_rich("[color=red]" + target.character_name + " 受到 " + str(damage) + " 点伤害![/color]")
-
-## 执行防御
-func execute_defend(character: Character):
-	if character == null:
-		return
-
-	print(character.character_name, " 选择防御，受到的伤害将减少")
-	character.set_defending(true)
-	
-	# 发出角色状态变化信号
-	character_stats_changed.emit(character)
-
-# 构建回合队列
-func build_turn_queue():
-	turn_queue.clear()
-	
-	# 简单实现：所有存活角色按速度排序
-	var all_characters = []
-	
-	for player in player_characters:
-		if player.current_hp > 0:
-			all_characters.append(player)
-			
-	for enemy in enemy_characters:
-		if enemy.current_hp > 0:
-			all_characters.append(enemy)
-	
-	# 按速度从高到低排序
-	all_characters.sort_custom(func(a, b): return a.speed > b.speed)
-	
-	turn_queue = all_characters
-	print("回合顺序已生成: ", turn_queue.size(), " 个角色")
-
-# 下一个回合
-func next_turn():
-	if turn_queue.is_empty():
-		print("回合结束，重新构建回合顺序")
-		build_turn_queue()
-		
-	if turn_queue.is_empty():
-		print("没有可行动的角色")
-		check_battle_end_condition()
-		return
-		
-	current_turn_character = turn_queue.pop_front()
-	turn_changed.emit(current_turn_character)
-	
-	print(current_turn_character.character_name, " 的回合")
-	
-	# 回合开始时重置防御状态
-	current_turn_character.set_defending(false)
-	
-	# 判断是玩家还是敌人的回合
-	if player_characters.has(current_turn_character):
-		state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
-		player_action_required.emit(current_turn_character)
-	else:
-		state_manager.change_state(BattleStateManager.BattleState.ENEMY_TURN)
-		execute_enemy_ai()
-
-# 检查战斗结束条件
-func check_battle_end_condition():
-	var player_alive = false
-	var enemy_alive = false
-	
-	for player in player_characters:
-		if player.current_hp > 0:
-			player_alive = true
-			break
-			
-	for enemy in enemy_characters:
-		if enemy.current_hp > 0:
-			enemy_alive = true
-			break
-	
-	if not player_alive:
-		state_manager.change_state(BattleStateManager.BattleState.DEFEAT)
-		battle_ended.emit(false)
-		print("战斗失败!")
-	elif not enemy_alive:
-		state_manager.change_state(BattleStateManager.BattleState.VICTORY)
-		battle_ended.emit(true)
-		print("战斗胜利!")
-	else:
-		state_manager.change_state(BattleStateManager.BattleState.ROUND_START)
-		next_turn()
-
-# 添加和管理角色
-func add_player_character(character: Character):
-	if not player_characters.has(character):
-		player_characters.append(character)
-		print("添加玩家角色: ", character.character_name)
-
-func add_enemy_character(character: Character):
-	if not enemy_characters.has(character):
-		enemy_characters.append(character)
-		print("添加敌人角色: ", character.character_name)
-
-func remove_character(character: Character):
-	if player_characters.has(character):
-		player_characters.erase(character)
-	if enemy_characters.has(character):
-		enemy_characters.erase(character)
-	if turn_queue.has(character):
-		turn_queue.erase(character)
-		
-	print(character.character_name, " 已从战斗中移除")
-	check_battle_end_condition()
-
-## 生成伤害数字
-func spawn_damage_number(position: Vector2, amount: int, color : Color) -> void:
-	var damage_number = DAMAGE_NUMBER_SCENE.instantiate()
-	get_parent().add_child(damage_number)
-	damage_number.global_position = position + Vector2(0, -50)
-	damage_number.show_number(str(amount), color)
-
-# 判断角色是否为玩家角色
-func is_player_character(character: Character) -> bool:
-	return player_characters.has(character)
-
-# MP检查和消耗
-func check_and_consume_mp(caster: Character, skill: SkillData) -> bool:
-	if caster.current_mp < skill.mp_cost:
-		print_rich("[color=red]魔力不足，法术施放失败！[/color]")
-		return false
-	
-	caster.use_mp(skill.mp_cost)
-	return true
-
-func calculate_skill_damage(caster: Character, target: Character, skill: SkillData) -> int:
-	# 基础伤害计算
-	var base_damage = skill.power + (caster.magic_attack * 0.8)
-	
-	# 考虑目标防御
-	var damage_after_defense = base_damage - (target.magic_defense * 0.5)
-	
-	# 加入随机浮动因素 (±10%)
-	var random_factor = randf_range(0.9, 1.1)
-	var final_damage = damage_after_defense * random_factor
-	
-	# 确保伤害至少为1
-	return max(1, round(final_damage))
-
-func play_cast_animation(caster: Character) -> void:
-	var tween = create_tween()
-	# 角色短暂发光效果
-	tween.tween_property(caster, "modulate", Color(1.5, 1.5, 1.5), 0.2)
-	tween.tween_property(caster, "modulate", Color(1, 1, 1), 0.2)
-	
-	# 这里可以播放施法音效
-	# AudioManager.play_sfx("spell_cast")
-
-func play_heal_cast_animation(caster: Character) -> void:
-	play_cast_animation(caster)
-
-# 播放命中动画
-func play_hit_animation(target: Character):
-	var tween = create_tween()
-	
-	# 目标变红效果
-	tween.tween_property(target, "modulate", Color(2, 0.5, 0.5), 0.1)
-	
-	# 抖动效果
-	var original_pos = target.position
-	tween.tween_property(target, "position", original_pos + Vector2(5, 0), 0.05)
-	tween.tween_property(target, "position", original_pos - Vector2(5, 0), 0.05)
-	tween.tween_property(target, "position", original_pos, 0.05)
-	
-	# 恢复正常颜色
-	tween.tween_property(target, "modulate", Color(1, 1, 1), 0.1)
-	
-	# 这里可以播放命中音效
-	# AudioManager.play_sfx("hit_impact")
-
-## 伤害效果
-func play_damage_effect(_target: Character, _params: Dictionary = {}) -> void:
-	pass
-
-# 治疗效果视觉反馈
-func play_heal_effect(target: Character, params: Dictionary = {}) -> void:
-	var tween = create_tween()
-	
-	# 目标变绿效果（表示恢复）
-	tween.tween_property(target, "modulate", Color(0.7, 1.5, 0.7), 0.2)
-	
-	# 上升的小动画，暗示"提升"
-	var original_pos = target.position
-	tween.tween_property(target, "position", original_pos - Vector2(0, 5), 0.2)
-	tween.tween_property(target, "position", original_pos, 0.1)
-	
-	# 恢复正常颜色
-	tween.tween_property(target, "modulate", Color(1, 1, 1), 0.2)
-	
-	# 如果有指定动画，则播放
-	if target.has_method("play_animation") and "animation" in params:
-		target.play_animation(params["animation"])
-
-# 状态效果应用视觉反馈
-func play_status_effect(target: Character, params: Dictionary = {}) -> void:
-	#var status_type = params.get("status_type", "buff")
-	var is_positive = params.get("is_positive", true)
-	
-	var effect_color = Color(0.7, 1, 0.7) if is_positive else Color(1, 0.7, 0.7)
-	
-	var tween = create_tween()
-	tween.tween_property(target, "modulate", effect_color, 0.2)
-	
-	# 正面状态上升效果，负面状态下沉效果
-	var original_pos = target.position
-	var offset = Vector2(0, -4) if is_positive else Vector2(0, 4)
-	tween.tween_property(target, "position", original_pos + offset, 0.1)
-	tween.tween_property(target, "position", original_pos, 0.1)
-	
-	# 恢复正常颜色
-	tween.tween_property(target, "modulate", Color(1, 1, 1), 0.2)
-	
-	# 如果有指定动画，则播放
-	if target.has_method("play_animation") and "animation" in params:
-		target.play_animation(params["animation"])
-
-# 防御姿态效果
-func play_defend_effect(character: Character) -> void:
-	var tween = create_tween()
-	
-	# 角色微光效果
-	tween.tween_property(character, "modulate", Color(0.8, 0.9, 1.3), 0.2)
-	
-	# 如果有对应动画，播放防御动画
-	if character.has_method("play_animation"):
-		character.play_animation("defend")
-
-func calculate_skill_healing(caster: Character, target: Character, skill: SkillData) -> int:
-	# 治疗量通常更依赖施法者的魔法攻击力
-	var base_healing = skill.power + (caster.magic_attack * 1.0)
-	
-	# 随机浮动 (±5%)
-	var random_factor = randf_range(0.95, 1.05)
-	var final_healing = base_healing * random_factor
-	
-	return max(1, round(final_healing))
-
-# 执行技能
-func execute_skill(caster: Character, skill: SkillData, custom_targets: Array = []) -> Dictionary:
-	# 检查参数
-	if not is_instance_valid(caster) or not skill:
-		push_error("SkillSystem: 无效的施法者或技能")
-		return {}
-	
-	# 检查MP消耗
-	if not skill.can_cast(caster.current_mp):
-		push_error("SkillSystem: MP不足，无法施放技能")
-		return {"error": "mp_not_enough"}
-	
-	# 扣除MP
-	if caster.can_cast_skill(skill):
-		caster.deduct_mp_for_skill(skill)
-	
-	# 获取目标
-	var targets = custom_targets if !custom_targets.is_empty() else get_targets_for_skill(caster, skill)
-	
-	if targets.is_empty():
-		push_warning("SkillSystem: 没有有效目标")
-		return {"error": "no_valid_targets"}
-	
-	# 播放施法动画
-	if skill.cast_animation != "":
-		_request_animation(caster, skill.cast_animation)
-	
-	# 等待短暂时间（供动画播放）
-	if Engine.get_main_loop():
-		await Engine.get_main_loop().process_frame
-
-	# 处理直接效果
-	var effect_results = {}
-	if not skill.effects.is_empty():
-		effect_results = await apply_effects(skill.effects, caster, targets)
-
-	# 合并结果
-	var final_results = {}
-	for target in targets:
-		final_results[target] = {}
-		
-		if effect_results.has(target):
-			for key in effect_results[target]:
-				final_results[target][key] = effect_results[target][key]
-	
-	# 发送技能执行信号
-	skill_executed.emit(caster, targets, skill, final_results)
-	
-	# 行动结束后转入回合结束
-	state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
-	return final_results
-
-# 应用单个效果
-func apply_effect(effect: SkillEffectData, source: Character, target: Character) -> Dictionary:
-	# 检查参数有效性
-	if !is_instance_valid(source) or !is_instance_valid(target):
-		push_error("SkillSystem: 无效的角色引用")
-		return {}
-	
-	if not effect:
-		push_error("SkillSystem: 无效的效果引用")
-		return {}
-	
-	# 获取对应的处理器
-	var processor_id = get_processor_id_for_effect(effect)
-	var processor = effect_processors.get(processor_id)
-	
-	if processor and processor.can_process_effect(effect):
-		# 使用处理器处理效果
-		var result = await processor.process_effect(effect, source, target)
-		
-		# 发出信号
-		effect_applied.emit(effect.effect_type, source, target, result)
-		return result
-	else:
-		push_error("SkillSystem: 无效的效果处理器")
-		return {}
-
-## 应用多个效果
-## [param effects] 要应用的效果数组
-## [param source] 效果的施法者
-## [param targets] 效果的目标角色数组
-## [return] 所有效果的结果
-func apply_effects(effects: Array, source: Character, targets: Array) -> Dictionary:
-	var all_results = {}
-
-	for target in targets:
-		if !is_instance_valid(target) or target.current_hp <= 0:
-			continue
-		
-		all_results[target] = {}
-		
-		for effect in effects:
-			var result = await apply_effect(effect, source, target)
-			for key in result:
-				all_results[target][key] = result[key]
-	
-	return all_results
-
-# 获取技能的目标
-func get_targets_for_skill(caster: Character, skill: SkillData) -> Array:
-	var targets = []
-	var target_type = skill.target_type
-	
-	match target_type:
-		SkillData.TargetType.SELF:
-			targets = [caster]
-		
-		SkillData.TargetType.ENEMY_SINGLE:
-			# 获取一个有效的敌方目标
-			targets = _get_valid_enemy_targets(caster)
-			if !targets.is_empty():
-				targets = [targets[0]]  # 只取第一个敌人
-		
-		SkillData.TargetType.ALLY_SINGLE:
-			# 获取一个有效的友方目标（不包括自己）
-			targets = _get_valid_ally_targets(caster, false)
-			if !targets.is_empty():
-				targets = [targets[0]]  # 只取第一个友方
-		
-		SkillData.TargetType.ENEMY_ALL:
-			# 获取所有有效的敌方目标
-			targets = _get_valid_enemy_targets(caster)
-		
-		SkillData.TargetType.ALLY_ALL:
-			# 获取所有有效的友方目标（不包括自己）
-			targets = _get_valid_ally_targets(caster, false)
-		
-		SkillData.TargetType.ALLY_SINGLE_INC_SELF:
-			# 获取除自己外的所有友方目标
-			targets = _get_valid_ally_targets(caster, false)
-		
-		SkillData.TargetType.ALLY_ALL_INC_SELF:
-			# 获取所有角色
-			targets = _get_valid_enemy_targets(caster) + _get_valid_ally_targets(caster, true)
-	
-	return targets
-
-## 注册效果处理器
-func register_effect_processor(processor: EffectProcessor):
-	var processor_id = processor.get_processor_id()
-	effect_processors[processor_id] = processor
-	print("注册效果处理器: %s" % processor_id)
-
-## 根据效果类型获取处理器ID
-func get_processor_id_for_effect(effect: SkillEffectData) -> String:
-	match effect.effect_type:
-		SkillEffectData.EffectType.DAMAGE:
-			return "damage"
-		SkillEffectData.EffectType.HEAL:
-			return "heal"
-		# SkillEffectData.EffectType.ATTRIBUTE_MODIFY:
-		# 	return "attribute"
-		SkillEffectData.EffectType.STATUS:
-			return "status"
-		SkillEffectData.EffectType.DISPEL:
-			return "dispel"
-		SkillEffectData.EffectType.SPECIAL:
-			return "special"
-		_:
-			return "unknown"
-
-## 获取有效的敌方单位
-func get_valid_enemy_targets(caster: Character) -> Array:
-	return _get_valid_enemy_targets(caster)
-
-## 获取有效的友方单位
-func get_valid_ally_targets(caster: Character, include_self: bool = true) -> Array:
-	return _get_valid_ally_targets(caster, include_self)
+#region 辅助函数
 
 ## 私有方法: 触发视觉效果
 func _trigger_visual_effect(effect: SkillEffectData, _source: Character, target: Character, result: Dictionary) -> void:
@@ -596,51 +105,6 @@ func _trigger_visual_effect(effect: SkillEffectData, _source: Character, target:
 			play_heal_effect(target, {
 				"amount": result.get("amount", 0)
 			})
-
-# 在初始化方法中注册新的效果处理器
-func _init_effect_processors():
-	# 注册处理器
-	register_effect_processor(DamageEffectProcessor.new(self))
-	register_effect_processor(HealingEffectProcessor.new(self))
-	register_effect_processor(ApplyStatusProcessor.new(self))
-	register_effect_processor(DispelStatusProcessor.new(self))
-
-#region 辅助函数
-## 获取有效的敌方目标
-func _get_valid_enemy_targets(caster: Character) -> Array:
-	var targets = []
-	var enemy_list = []
-	
-	# 确定敌人列表
-	if is_player_character(caster):
-		enemy_list = enemy_characters
-	else:
-		enemy_list = player_characters
-	
-	# 过滤出存活的敌人
-	for enemy in enemy_list:
-		if enemy.is_alive:
-			targets.append(enemy)
-	
-	return targets
-
-## 获取有效的友方目标
-func _get_valid_ally_targets(caster: Character, include_self: bool = true) -> Array:
-	var targets = []
-	var ally_list = []
-	
-	# 确定友方列表
-	if is_player_character(caster):
-		ally_list = player_characters
-	else:
-		ally_list = enemy_characters
-	
-	# 过滤出存活的友方
-	for ally in ally_list:
-		if ally.is_alive and (include_self or ally != caster):
-			targets.append(ally)
-	
-	return targets
 
 ## 请求播放动画
 ## [param character] 角色
@@ -663,11 +127,7 @@ func _on_visual_effect_requested(effect_type: String, target, params: Dictionary
 	else:
 		push_warning("BattleManager: 未找到视觉效果方法 play_" + effect_type + "_effect")
 
-## 订阅角色信号
-func _subscribe_to_character_signals(character : Character) -> void:
-	if not character.character_defeated.is_connected(_on_character_defeated):
-		character.character_defeated.connect(_on_character_defeated)
-	#TODO 链接其他信号
+#endregion
 
 # 处理战斗状态变化
 func _on_battle_state_changed(old_state, new_state):
@@ -677,29 +137,26 @@ func _on_battle_state_changed(old_state, new_state):
 		BattleStateManager.BattleState.BATTLE_START:
 			print("战斗开始初始化...")
 			# 战斗初始化
-			build_turn_queue()
+			turn_order_manager.build_queue()
 			await get_tree().create_timer(1.0).timeout
 			state_manager.change_state(BattleStateManager.BattleState.ROUND_START)
 			
 		BattleStateManager.BattleState.ROUND_START:
 			print("回合开始...")
 			# 回合开始处理，确定行动者
-			next_turn()
-			# 重置当前回合角色标记
-			if current_turn_character:
-				if current_turn_character.has_method("reset_turn_flags"):
-					current_turn_character.reset_turn_flags()
+			_next_turn()
+			#TODO 重置当前回合角色标记
 			
 		BattleStateManager.BattleState.PLAYER_TURN:
 			# 通知UI需要玩家输入
 			print("玩家回合：等待输入...")
-			player_action_required.emit(current_turn_character)
+			player_action_required.emit(turn_order_manager.current_character)
 			
 		BattleStateManager.BattleState.ROUND_END:
 			print("回合结束...")
 			# 处理回合结束效果
 			await get_tree().create_timer(0.5).timeout
-			check_battle_end_condition()
+			combat_rules.check_battle_end_conditions()
 			
 		BattleStateManager.BattleState.VICTORY:
 			print("胜利!")
@@ -711,40 +168,111 @@ func _on_battle_state_changed(old_state, new_state):
 			
 		BattleStateManager.BattleState.ENEMY_TURN:
 			# 执行敌人AI
-			print("敌人回合：", current_turn_character.character_name, " 思考中...")
+			print("敌人回合：", turn_order_manager.current_character.character_name, " 思考中...")
 			# 延迟一下再执行AI，避免敌人行动过快
 			await get_tree().create_timer(1.0).timeout
-			execute_enemy_ai()
+			_execute_enemy_ai()
 			
 		BattleStateManager.BattleState.ACTION_EXECUTION:
 			# 执行选择的行动
 			# 这部分通常在选择行动后直接调用execute_action
-			pass
+			print("执行选择的行动...")
 			
+			# TODO: 实现execute_action逻辑
 
-				
+# 注册战斗场景中的角色
+func _register_characters() -> void:
+	# 查找战斗场景中的所有角色
+	var player_area = get_node_or_null("../PlayerArea")
+	var enemy_area = get_node_or_null("../EnemyArea")
+	
+	if player_area:
+		for child in player_area.get_children():
+			if child is Character:
+				character_registry.register_character(child, true)
+				_subscribe_to_character_signals(child)
+	
+	if enemy_area:
+		for child in enemy_area.get_children():
+			if child is Character:
+				character_registry.register_character(child, false)
+				_subscribe_to_character_signals(child)
+	
+	print("已注册 ", character_registry.get_player_team(true).size(), " 名玩家角色和 ", character_registry.get_enemy_team(false).size(), " 名敌人")
 
-			
+# 开始战斗
+func _start_battle() -> void:
+	print("战斗开始!")
 
+	# 自动查找并注册战斗场景中的角色
+	_register_characters()
+	
+	if character_registry.get_player_team(true).is_empty() or character_registry.get_enemy_team(false).is_empty():
+		push_error("无法开始战斗：缺少玩家或敌人!")
+		return
+	
+	state_manager.change_state(BattleStateManager.BattleState.BATTLE_START)
+
+## 订阅角色信号
+func _subscribe_to_character_signals(character : Character) -> void:
+	if not character.character_defeated.is_connected(_on_character_defeated):
+		character.character_defeated.connect(_on_character_defeated)
+	#TODO 链接其他信号
 
 # 角色死亡信号处理函数
 func _on_character_defeated(character: Character) -> void:
 	print_rich("[color=purple]" + character.character_name + " 已被击败![/color]")
-	
-	# 从相应列表中移除
-	if player_characters.has(character):
-		player_characters.erase(character)
-	elif enemy_characters.has(character):
-		enemy_characters.erase(character)
-	
-	# 从回合队列中移除
-	if turn_queue.has(character):
-		turn_queue.erase(character)
-	
-	# 如果当前行动者死亡，需要特殊处理
-	if current_turn_character == character:
-		print("当前行动者 " + character.character_name + " 已阵亡。")
-	
 	# 检查战斗是否结束
-	check_battle_end_condition()
-#endregion
+	combat_rules.check_battle_end_conditions()
+
+# 下一个回合
+func _next_turn() -> void:
+	var next_character = turn_order_manager.get_next_character()
+	
+	if not next_character:
+		print("回合结束，重新构建回合顺序")
+		turn_order_manager.build_queue()
+		next_character = turn_order_manager.get_next_character()
+		
+	if not next_character:
+		print("没有可行动的角色")
+		combat_rules.check_battle_end_conditions()
+		return
+	
+	current_turn_character = next_character
+	turn_changed.emit(current_turn_character)
+	
+	print(current_turn_character.character_name, " 的回合")
+	
+	# 回合开始时重置防御状态
+	current_turn_character.set_defending(false)
+	
+	# 判断是玩家还是敌人的回合
+	if character_registry.is_player_character(current_turn_character):
+		state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
+		player_action_required.emit(current_turn_character)
+	else:
+		state_manager.change_state(BattleStateManager.BattleState.ENEMY_TURN)
+		_execute_enemy_ai()
+
+# 执行敌人AI
+func _execute_enemy_ai() -> void:
+	var current_turn_character = turn_order_manager.current_character
+	if not state_manager.is_in_state(BattleStateManager.BattleState.ENEMY_TURN) or current_turn_character == null:
+		push_error("敌人回合：当前不是敌人回合或没有可行动的角色")
+		return
+		
+	# 简单的AI逻辑：总是攻击第一个存活的玩家角色
+	var target = null
+	for player in character_registry.get_player_team(true):
+		target = player
+		break
+			
+	if target:
+		state_manager.change_state(BattleStateManager.BattleState.ACTION_EXECUTION)
+		print(current_turn_character.character_name, " 选择攻击 ", target.character_name)
+		await execute_attack(current_turn_character, target)
+		state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
+	else:
+		print("敌人找不到可攻击的目标")
+		state_manager.change_state(BattleStateManager.BattleState.ROUND_END)

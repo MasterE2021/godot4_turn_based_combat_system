@@ -2,22 +2,15 @@ extends Node
 class_name BattleVisualEffects
 
 ## 伤害数字场景 (需要预加载或在编辑器中设置)
-@export var damage_number_scene: PackedScene 
-## 治疗数字场景
-@export var heal_number_scene: PackedScene
-## 状态效果文本场景 (例如 "中毒!", "眩晕!")
-@export var status_text_scene: PackedScene 
+@export var _damage_number_scene: PackedScene 
 
 ## 初始化
-func initialize() -> void:
+func initialize(damage_number_scene: PackedScene = null) -> void:
+	_damage_number_scene = damage_number_scene
 	# 预加载资源检查
-	if not damage_number_scene:
+	if not _damage_number_scene:
 		push_warning("Damage number scene not set in BattleVisualEffects.")
-	if not heal_number_scene:
-		push_warning("Heal number scene not set in BattleVisualEffects.")
-	if not status_text_scene:
-		push_warning("Status text scene not set in BattleVisualEffects.")
-	
+	# 初始化完成
 	print("BattleVisualEffects initialized.")
 
 ## 显示伤害数字
@@ -25,78 +18,28 @@ func initialize() -> void:
 ## [param damage_amount] 伤害数值
 ## [param is_critical] 是否暴击
 ## [param damage_type] 伤害类型 (例如 "物理", "火焰") - 可选，用于显示不同颜色的数字或图标
-func show_damage_number(target_character: Character, damage_amount: float, is_critical: bool = false, damage_type: String = "") -> void:
-	if not is_instance_valid(target_character) or not damage_number_scene:
-		return
-
-	var damage_num_instance = damage_number_scene.instantiate()
-	if not damage_num_instance: 
-		push_error("Failed to instantiate damage number scene.")
-		return
-		
-	# 将伤害数字添加到目标角色的位置或一个全局的UI层
-	# 这里假设添加到目标角色节点下，并向上偏移一些
-	target_character.add_child(damage_num_instance)
-	damage_num_instance.global_position = target_character.global_position - Vector2(0, 50) # 示例偏移
-	
-	# 配置伤害数字 (假设DamageNumber场景有一个setup方法)
-	if damage_num_instance.has_method("setup"):
-		damage_num_instance.setup(damage_amount, is_critical, damage_type)
-	else:
-		push_warning("DamageNumber scene does not have a 'setup' method.")
-		# 可以直接设置 Label 的 text 等属性作为备用
-		if damage_num_instance.has_node("Label"):
-			var label = damage_num_instance.get_node("Label") as Label
-			label.text = str(roundi(damage_amount))
-			if is_critical:
-				label.modulate = Color.RED # 示例暴击颜色
-	
-	print("Showed damage number: %d on %s" % [damage_amount, target_character.character_name])
+func show_damage_number(
+		target_character: Character, 
+		damage_amount: float, 
+		is_critical: bool = false,
+		offset: Vector2 = Vector2(0, 50)
+		) -> void:
+	var damage_num_instance : DamageNumber = _create_damage_number(target_character, offset)
+	damage_num_instance.show_damage(damage_amount, is_critical)
 
 ## 显示治疗数字
-func show_heal_number(target_character: Character, heal_amount: float) -> void:
-	if not is_instance_valid(target_character) or not heal_number_scene:
-		return
-
-	var heal_num_instance = heal_number_scene.instantiate()
-	if not heal_num_instance:
-		push_error("Failed to instantiate heal number scene.")
-		return
-
-	target_character.add_child(heal_num_instance)
-	heal_num_instance.global_position = target_character.global_position - Vector2(0, 50)
-
-	if heal_num_instance.has_method("setup"):
-		heal_num_instance.setup(heal_amount)
-	else:
-		push_warning("HealNumber scene does not have a 'setup' method.")
-		if heal_num_instance.has_node("Label"):
-			(heal_num_instance.get_node("Label") as Label).text = "+" + str(roundi(heal_amount))
-			(heal_num_instance.get_node("Label") as Label).modulate = Color.GREEN # 示例治疗颜色
-			
-	print("Showed heal number: %d on %s" % [heal_amount, target_character.character_name])
+func show_heal_number(
+		target_character: Character, 
+		heal_amount: float,
+		offset: Vector2 = Vector2(0, 50)
+		) -> void:
+	var heal_num_instance : DamageNumber = _create_damage_number(target_character, offset)
+	heal_num_instance.show_heal(heal_amount)
 
 ## 显示状态文本 (例如 "中毒!", "眩晕!")
-func show_status_text(target_character: Character, text: String, color: Color = Color.WHITE) -> void:
-	if not is_instance_valid(target_character) or not status_text_scene:
-		return
-
-	var status_text_instance = status_text_scene.instantiate()
-	if not status_text_instance:
-		push_error("Failed to instantiate status text scene.")
-		return
-		
-	target_character.add_child(status_text_instance)
-	status_text_instance.global_position = target_character.global_position - Vector2(0, 70) # 示例偏移
-
-	if status_text_instance.has_method("setup"):
-		status_text_instance.setup(text, color)
-	else:
-		push_warning("StatusText scene does not have a 'setup' method.")
-		if status_text_instance.has_node("Label"):
-			(status_text_instance.get_node("Label") as Label).text = text
-			(status_text_instance.get_node("Label") as Label).modulate = color
-
+func show_status_text(target_character: Character, text: String, is_positive: bool = true) -> void:
+	var status_text_instance : DamageNumber = _create_damage_number(target_character, Vector2(0, 70))
+	status_text_instance.show_status(text, is_positive)
 	print("Showed status text: '%s' on %s" % [text, target_character.character_name])
 
 ## 播放角色攻击动画 (简易版，实际可能需要更复杂的动画状态机控制)
@@ -120,6 +63,16 @@ func play_attack_animation(attacker: Character, targets: Array[Character], skill
 	await tween.finished
 	
 	return tween.finished # 返回动画完成的信号
+
+## 播放施法动画
+func play_cast_animation(caster: Character) -> void:
+	var tween = create_tween()
+	# 角色短暂发光效果
+	tween.tween_property(caster, "modulate", Color(1.5, 1.5, 1.5), 0.2)
+	tween.tween_property(caster, "modulate", Color(1, 1, 1), 0.2)
+	
+	# 这里可以播放施法音效
+	# AudioManager.play_sfx("spell_cast")
 
 ## 播放角色受击动画
 func play_hit_animation(target_character: Character) -> Signal:
@@ -175,8 +128,85 @@ func play_skill_visual_effects(skill_data: SkillData, caster: Character, targets
 	await tween.finished
 	return tween.finished
 
+# 治疗效果视觉反馈
+func play_heal_effect(target: Character, params: Dictionary = {}) -> void:
+	var tween = create_tween()
+	
+	# 目标变绿效果（表示恢复）
+	tween.tween_property(target, "modulate", Color(0.7, 1.5, 0.7), 0.2)
+	
+	# 上升的小动画，暗示"提升"
+	var original_pos = target.position
+	tween.tween_property(target, "position", original_pos - Vector2(0, 5), 0.2)
+	tween.tween_property(target, "position", original_pos, 0.1)
+	
+	# 恢复正常颜色
+	tween.tween_property(target, "modulate", Color(1, 1, 1), 0.2)
+	
+	# 如果有指定动画，则播放
+	if target.has_method("play_animation") and "animation" in params:
+		target.play_animation(params["animation"])
+
+# 状态效果应用视觉反馈
+func play_status_effect(target: Character, params: Dictionary = {}) -> void:
+	#var status_type = params.get("status_type", "buff")
+	var is_positive = params.get("is_positive", true)
+	
+	var effect_color = Color(0.7, 1, 0.7) if is_positive else Color(1, 0.7, 0.7)
+	
+	var tween = create_tween()
+	tween.tween_property(target, "modulate", effect_color, 0.2)
+	
+	# 正面状态上升效果，负面状态下沉效果
+	var original_pos = target.position
+	var offset = Vector2(0, -4) if is_positive else Vector2(0, 4)
+	tween.tween_property(target, "position", original_pos + offset, 0.1)
+	tween.tween_property(target, "position", original_pos, 0.1)
+	
+	# 恢复正常颜色
+	tween.tween_property(target, "modulate", Color(1, 1, 1), 0.2)
+	
+	# 如果有指定动画，则播放
+	if target.has_method("play_animation") and "animation" in params:
+		target.play_animation(params["animation"])
+
+# 防御姿态效果
+func play_defend_effect(character: Character) -> void:
+	var tween = create_tween()
+	
+	# 角色微光效果
+	tween.tween_property(character, "modulate", Color(0.8, 0.9, 1.3), 0.2)
+	
+	# 如果有对应动画，播放防御动画
+	if character.has_method("play_animation"):
+		character.play_animation("defend")
+
 # --- 其他可能的视觉效果方法 ---
 # func show_buff_applied_effect(target: Character, buff_name: String)
 # func show_debuff_applied_effect(target: Character, debuff_name: String)
 # func highlight_active_character(character: Character)
 # func dim_inactive_characters(characters_to_dim: Array[Character])
+
+## 创建伤害数字
+## [param target_character] 受到伤害的角色
+## [param offset] 相对于目标角色的位置偏移
+## [return] 创建的伤害数字实例
+func _create_damage_number(target_character: Character, offset: Vector2) -> DamageNumber:
+	if not is_instance_valid(target_character):
+		push_error("Invalid target character.")
+		return
+
+	if not _damage_number_scene:
+		push_error("Damage number scene not set in BattleVisualEffects.")
+		return null
+
+	var damage_num_instance : DamageNumber = _damage_number_scene.instantiate()
+	if not damage_num_instance: 
+		push_error("Failed to instantiate damage number scene.")
+		return null
+	# 将伤害数字添加到目标角色的位置或一个全局的UI层
+	# 这里假设添加到目标角色节点下，并向上偏移一些
+	target_character.add_child(damage_num_instance)
+	damage_num_instance.global_position = target_character.global_position - offset
+
+	return damage_num_instance

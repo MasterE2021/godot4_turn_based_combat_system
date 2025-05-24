@@ -37,7 +37,7 @@ func process_effect(effect: SkillEffectData, source: Character, target: Characte
 	target.heal(heal_amount)
 	
 	# 角色状态变化信号
-	_battle_manager.character_stats_changed.emit(target)
+	_skill_system.character_stats_changed.emit(target)
 	
 	# 记录结果
 	results["heal_amount"] = heal_amount

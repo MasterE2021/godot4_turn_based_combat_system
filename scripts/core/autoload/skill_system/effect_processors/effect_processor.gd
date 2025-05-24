@@ -5,11 +5,11 @@ class_name EffectProcessor
 ## 所有具体效果处理器都应继承此类，并实现相应的方法
 
 # 系统引用
-var _battle_manager : BattleManager = null
+var _skill_system : SkillSystem = null
 
 ## 构造函数
-func _init(p_battle_manager = null):
-	_battle_manager = p_battle_manager
+func _init(p_skill_system = null):
+	_skill_system = p_skill_system
 
 ## 处理效果 - 主要接口方法
 ## [return] 处理结果的字典
@@ -36,12 +36,12 @@ func can_process_effect(_effect: SkillEffectData) -> bool:
 ## [param params] 视觉效果参数
 ## 发送视觉效果请求
 func _request_visual_effect(effect_type: StringName, target, params: Dictionary = {}):
-	if not _battle_manager or not is_instance_valid(target):
+	if not _skill_system or not is_instance_valid(target):
 		return
 		
 	# 分发到适当的视觉效果方法
-	if _battle_manager.has_method("play_" + effect_type + "_effect"):
+	if _skill_system.has_method("play_" + effect_type + "_effect"):
 		var method = "play_" + effect_type + "_effect"
-		_battle_manager.call(method, target, params)
+		_skill_system.call(method, target, params)
 	else:
 		push_warning("SkillSystem: 未找到视觉效果方法 play_" + effect_type + "_effect")

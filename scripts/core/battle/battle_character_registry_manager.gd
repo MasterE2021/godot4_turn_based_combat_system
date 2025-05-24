@@ -1,7 +1,9 @@
 extends Node
-class_name CharacterRegistryManager
+class_name BattleCharacterRegistryManager
 
-## 角色注册管理器
+## 参与战斗的角色注册管理器
+## 负责管理战斗中的角色注册和反注册
+## 包括队伍管理和角色状态跟踪
 
 ## 存储所有参与战斗的角色 (包括玩家和敌人)
 var _all_characters: Array[Character] = []
@@ -9,8 +11,8 @@ var _all_characters: Array[Character] = []
 var _player_team: Array[Character] = []
 var _enemy_team: Array[Character] = []
 
-## 角色注册
-signal character_registered(character: Character)
+## 角色注册信号
+signal character_registered(character: Character)	
 ## 角色反注册信号
 signal character_unregistered(character: Character)
 ## 队伍变化信号
@@ -39,19 +41,14 @@ func register_character(character: Character, is_player_team: bool) -> bool:
 	_all_characters.append(character)
 	if is_player_team:
 		_player_team.append(character)
-		# 假设角色有一个 is_player_controlled 属性
-		if character.has_meta("is_player_controlled"): # 或者其他方式判断
-			character.set_meta("is_player_controlled", true) 
 		team_changed.emit(_player_team, "player")
 	else:
 		_enemy_team.append(character)
-		if character.has_meta("is_player_controlled"):
-			character.set_meta("is_player_controlled", false)
 		team_changed.emit(_enemy_team, "enemy")
 		
 	# 连接角色死亡信号，以便自动反注册
 	if not character.character_defeated.is_connected(_on_character_defeated):
-		character.character_defeated.connect(_on_character_defeated)
+		character.character_defeated.connect(_on_character_defeated.bind(character))
 		
 	character_registered.emit(character)
 	print("Character registered: %s (Player Team: %s)" % [character.character_name, is_player_team])
@@ -62,7 +59,7 @@ func register_character(character: Character, is_player_team: bool) -> bool:
 ## [return] 是否反注册成功
 func unregister_character(character: Character) -> bool:
 	if not is_instance_valid(character) or not character in _all_characters:
-		# push_warning("Attempted to unregister a character (%s) not found in the registry." % character)
+		push_warning("Attempted to unregister a character (%s) not found in the registry." % character)
 		return false
 
 	_all_characters.erase(character)
@@ -85,14 +82,6 @@ func unregister_character(character: Character) -> bool:
 		
 	print("Character unregistered: %s" % character.character_name)
 	return true
-
-## 当角色被击败时自动反注册
-## [param defeated_character] 被击败的角色
-## [return] void
-func _on_character_defeated(defeated_character: Character) -> void:
-	print("Character %s defeated, attempting to unregister." % defeated_character.character_name)
-	unregister_character(defeated_character)
-	# BattleManager 可能还需要处理其他逻辑，比如检查战斗是否结束
 
 ## 获取所有已注册的角色
 ## [return] 所有已注册的角色
@@ -158,3 +147,12 @@ func is_team_defeated(is_player_team_check: bool) -> bool:
 		if is_instance_valid(character) and character.is_alive:
 			return false # 只要有一个存活，队伍就未被击败
 	return true # 所有角色都已死亡
+
+#region --- 信号处理 ---
+## 当角色被击败时自动反注册
+## [param defeated_character] 被击败的角色
+func _on_character_defeated(defeated_character: Character) -> void:
+	print("Character %s defeated, attempting to unregister." % defeated_character.character_name)
+	unregister_character(defeated_character)
+	# BattleManager 可能还需要处理其他逻辑，比如检查战斗是否结束
+#endregion
