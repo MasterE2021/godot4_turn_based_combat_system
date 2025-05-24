@@ -42,63 +42,6 @@ func show_status_text(target_character: Character, text: String, is_positive: bo
 	status_text_instance.show_status(text, is_positive)
 	print("Showed status text: '%s' on %s" % [text, target_character.character_name])
 
-## 播放角色攻击动画 (简易版，实际可能需要更复杂的动画状态机控制)
-## [param attacker] 攻击者
-## [param targets] 目标 (可以是单个角色或角色数组)
-## [param skill_animation_name] 技能特定的动画名称 (可选)
-func play_attack_animation(attacker: Character, targets: Array[Character], skill_animation_name: String = "") -> Signal:
-	if not is_instance_valid(attacker): 
-		return Signal() # 返回一个立即完成的信号
-		
-	print("%s plays attack animation towards %s (Skill: %s)" % [attacker.character_name, targets, skill_animation_name if skill_animation_name else "Default Attack"])
-	
-	# 实际的动画播放逻辑:
-	# 1. 获取 attacker 的 AnimationPlayer
-	# 2. 播放指定的动画 (skill_animation_name 或默认攻击动画)
-	# 3. 等待动画完成 (yield attacker.animation_player.animation_finished)
-	
-	# 模拟动画播放延迟
-	var tween = get_tree().create_tween()
-	tween.tween_interval(0.5) # 假设动画持续0.5秒
-	await tween.finished
-	
-	return tween.finished # 返回动画完成的信号
-
-## 播放施法动画
-func play_cast_animation(caster: Character) -> void:
-	var tween = create_tween()
-	# 角色短暂发光效果
-	tween.tween_property(caster, "modulate", Color(1.5, 1.5, 1.5), 0.2)
-	tween.tween_property(caster, "modulate", Color(1, 1, 1), 0.2)
-	
-	# 这里可以播放施法音效
-	# AudioManager.play_sfx("spell_cast")
-
-## 播放角色受击动画
-func play_hit_animation(target_character: Character) -> Signal:
-	if not is_instance_valid(target_character):
-		return Signal() # 返回一个立即完成的信号
-
-	print("%s plays hit animation" % target_character.character_name)
-	# 实际的受击动画逻辑
-	# ...
-	var tween = get_tree().create_tween()
-	tween.tween_interval(0.2) 
-	await tween.finished
-	return tween.finished
-
-## 播放角色死亡动画
-func play_death_animation(character: Character) -> Signal:
-	if not is_instance_valid(character):
-		return Signal() # 返回一个立即完成的信号
-		
-	print("%s plays death animation" % character.character_name)
-	# 例如，让角色渐隐
-	var tween = get_tree().create_tween()
-	tween.tween_property(character, "modulate:a", 0, 0.5) # 0.5秒内透明度变为0
-	await tween.finished
-	return tween.finished
-
 ## 播放技能特效 (例如在目标身上显示一个爆炸效果)
 ## [param skill_data] 使用的技能数据
 ## [param caster] 施法者

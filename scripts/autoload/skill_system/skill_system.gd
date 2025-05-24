@@ -15,6 +15,9 @@ signal skill_execution_completed(caster: Character, skill: SkillData, targets: A
 signal skill_failed(caster: Character, skill: SkillData, reason: String) # 例如 MP不足, 目标无效等
 signal effect_applied(effect_type, source, target, result)
 
+# 视觉效果请求信号
+signal visual_effect_requested(effect_type: StringName, target: Node, params: Dictionary)
+
 ## 技能执行上下文
 ## 包含执行技能所需的所有依赖和上下文信息
 class SkillExecutionContext:
@@ -31,6 +34,8 @@ func _ready() -> void:
 	_init_effect_processors()
 	print("SkillSystem initialized as autoload singleton.")
 
+#region --- 公共API ---
+
 ## 注册效果处理器
 ## [param processor] 要注册的效果处理器
 ## [return] 是否成功注册
@@ -38,35 +43,9 @@ func register_effect_processor(processor: EffectProcessor) -> void:
 	if processor and processor.has_method("get_processor_id") and processor.has_method("process_effect"):
 		var processor_id = processor.get_processor_id()
 		_effect_processors[processor_id] = processor
-		# 设置处理器上下文
-		processor.set_context(self)
 		print("SkillSystem: Registered effect processor for type: %s" % processor_id)
 	else:
 		push_error("SkillSystem: Failed to register invalid effect processor.")
-
-# 在初始化方法中注册新的效果处理器
-func _init_effect_processors() -> void:
-	# 注册处理器
-	register_effect_processor(DamageEffectProcessor.new())
-	register_effect_processor(HealingEffectProcessor.new())
-	register_effect_processor(ApplyStatusProcessor.new())
-	register_effect_processor(DispelStatusProcessor.new())
-
-## 根据效果类型获取处理器ID
-func _get_effect_processor_for_type(effect: SkillEffectData) -> EffectProcessor:
-	match effect.effect_type:
-		SkillEffectData.EffectType.DAMAGE:
-			return _effect_processors.get("damage")
-		SkillEffectData.EffectType.HEAL:
-			return _effect_processors.get("heal")
-		SkillEffectData.EffectType.STATUS:
-			return _effect_processors.get("status")
-		SkillEffectData.EffectType.DISPEL:
-			return _effect_processors.get("dispel")
-		SkillEffectData.EffectType.SPECIAL:
-			return _effect_processors.get("special")
-		_:
-			return null
 
 ## 尝试执行一个技能
 ## [param context] 技能执行上下文
@@ -99,6 +78,75 @@ func attempt_execute_skill(context: SkillExecutionContext, caster: Character, sk
 	call_deferred("_process_skill_effects_async", context, caster, skill_data, selected_targets)
 	
 	return true
+
+## 获取有效的友方目标
+func get_valid_ally_targets(context: SkillExecutionContext, caster: Character, include_self: bool) -> Array[Character]:
+	var allies = context.character_registry.get_allied_team_for_character(caster, include_self)
+	var valid_targets: Array[Character] = []
+	for ally in allies:
+		if ally.is_alive:
+			valid_targets.append(ally)
+	return valid_targets
+
+## 获取有效的敌方目标
+func get_valid_enemy_targets(context: SkillExecutionContext, caster: Character) -> Array[Character]:
+	var enemies = context.character_registry.get_opposing_team_for_character(caster)
+	var valid_targets: Array[Character] = []
+	for enemy in enemies:
+		if enemy.is_alive:
+			valid_targets.append(enemy)
+	return valid_targets
+
+## 处理状态的持续效果
+## [param context] 技能执行上下文
+## [param status] 状态数据
+## [param character] 拥有状态的角色
+## [return] 效果处理结果
+func process_status_ongoing_effects(status: SkillStatusData, character: Character) -> Dictionary:
+	return await _process_status_effects(status.ongoing_effects, status, character)
+
+## 处理状态的结束效果
+## [param context] 技能执行上下文
+## [param status] 状态数据
+## [param character] 拥有状态的角色
+## [return] 效果处理结果
+func process_status_end_effects(status: SkillStatusData, character: Character) -> Dictionary:
+	return await _process_status_effects(status.end_effects, status, character)
+
+## 请求视觉效果
+## [param effect_type] 效果类型
+## [param target] 目标节点
+## [param params] 参数字典
+func request_visual_effect(effect_type: StringName, target: Node, params: Dictionary = {}) -> void:
+	# 发送视觉效果请求信号
+	visual_effect_requested.emit(effect_type, target, params)
+
+#endregion --- 公共API ---
+
+#region --- 私有方法 ---
+# 在初始化方法中注册新的效果处理器
+func _init_effect_processors() -> void:
+	# 注册处理器
+	register_effect_processor(DamageEffectProcessor.new())
+	register_effect_processor(HealingEffectProcessor.new())
+	register_effect_processor(ApplyStatusProcessor.new())
+	register_effect_processor(DispelStatusProcessor.new())
+
+## 根据效果类型获取处理器ID
+func _get_effect_processor_for_type(effect: SkillEffectData) -> EffectProcessor:
+	match effect.effect_type:
+		SkillEffectData.EffectType.DAMAGE:
+			return _effect_processors.get("damage")
+		SkillEffectData.EffectType.HEAL:
+			return _effect_processors.get("heal")
+		SkillEffectData.EffectType.STATUS:
+			return _effect_processors.get("status")
+		SkillEffectData.EffectType.DISPEL:
+			return _effect_processors.get("dispel")
+		SkillEffectData.EffectType.SPECIAL:
+			return _effect_processors.get("special")
+		_:
+			return null
 
 ## 私有方法：验证技能可用性
 func _validate_skill_usability(context: SkillExecutionContext, caster: Character, skill: SkillData, targets: Array[Character]) -> Dictionary:
@@ -352,7 +400,7 @@ func _determine_execution_targets(context: SkillExecutionContext, caster: Charac
 ## [param effect] 效果数据
 ## [param initial_targets] 初始目标
 ## [return] 效果的实际目标
-func _determine_targets_for_effect(context: SkillExecutionContext, caster: Character, skill: SkillData, effect: SkillEffectData, initial_targets: Array[Character]) -> Array[Character]:
+func _determine_targets_for_effect(context: SkillExecutionContext, caster: Character, _skill: SkillData, effect: SkillEffectData, initial_targets: Array[Character]) -> Array[Character]:
 	# 默认使用技能的目标
 	var effect_targets: Array[Character] = initial_targets.duplicate()
 	
@@ -410,24 +458,6 @@ func _trigger_visual_effect(context: SkillExecutionContext, effect_data: SkillEf
 				if context.visual_effects_handler.has_method("show_status_text"):
 					context.visual_effects_handler.show_status_text(target, result.special_vfx_text, true)
 
-## 获取有效的友方目标
-func get_valid_ally_targets(context: SkillExecutionContext, caster: Character, include_self: bool) -> Array[Character]:
-	var allies = context.character_registry.get_allied_team_for_character(caster, include_self)
-	var valid_targets: Array[Character] = []
-	for ally in allies:
-		if ally.is_alive:
-			valid_targets.append(ally)
-	return valid_targets
-
-## 获取有效的敌方目标
-func get_valid_enemy_targets(context: SkillExecutionContext, caster: Character) -> Array[Character]:
-	var enemies = context.character_registry.get_opposing_team_for_character(caster)
-	var valid_targets: Array[Character] = []
-	for enemy in enemies:
-		if enemy.is_alive:
-			valid_targets.append(enemy)
-	return valid_targets
-
 ## 处理状态效果的辅助方法
 ## [param context] 技能执行上下文
 ## [param effect_list] 效果列表
@@ -460,18 +490,4 @@ func _process_status_effects(effect_list: Array, status: SkillStatusData, charac
 	
 	return results
 
-## 处理状态的持续效果
-## [param context] 技能执行上下文
-## [param status] 状态数据
-## [param character] 拥有状态的角色
-## [return] 效果处理结果
-func process_status_ongoing_effects(status: SkillStatusData, character: Character) -> Dictionary:
-	return await _process_status_effects(status.ongoing_effects, status, character)
-
-## 处理状态的结束效果
-## [param context] 技能执行上下文
-## [param status] 状态数据
-## [param character] 拥有状态的角色
-## [return] 效果处理结果
-func process_status_end_effects(status: SkillStatusData, character: Character) -> Dictionary:
-	return await _process_status_effects(status.end_effects, status, character)
+#endregion --- 私有方法 ---

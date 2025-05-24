@@ -1,9 +1,11 @@
-[gd_scene load_steps=5 format=3 uid="uid://cb2e2cndtui6m"]
+[gd_scene load_steps=6 format=3 uid="uid://cb2e2cndtui6m"]
 
 [ext_resource type="Script" uid="uid://drhgqgra8rnsh" path="res://scenes/characters/character.gd" id="1_f5tgq"]
 [ext_resource type="PackedScene" uid="uid://bj4w0ajv2jk2e" path="res://scenes/ui/defense_indicator.tscn" id="2_lv1ak"]
 [ext_resource type="Script" uid="uid://blrs4jiqbl4v5" path="res://scripts/core/character/character_skill_component.gd" id="3_vbih0"]
 [ext_resource type="Script" uid="uid://bnwrmd7xm1v5n" path="res://scripts/core/character/character_combat_component.gd" id="4_b1mxh"]
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_vbih0"]
 
 [node name="CharacterScene" type="Node2D"]
 script = ExtResource("1_f5tgq")
@@ -63,6 +65,12 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="DefenseIndicator" parent="." instance=ExtResource("2_lv1ak")]
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+unique_name_in_owner = true
+libraries = {
+&"": SubResource("AnimationLibrary_vbih0")
+}
 
 [node name="CharacterSkillComponent" type="Node" parent="."]
 unique_name_in_owner = true

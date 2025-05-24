@@ -9,6 +9,7 @@ class_name Character
 @onready var name_label := $Container/NameLabel
 @onready var character_rect := $Container/CharacterRect
 @onready var defense_indicator : DefenseIndicator = $DefenseIndicator
+@onready var animation_player: AnimationPlayer = %AnimationPlayer
 # 组件引用
 @onready var combat_component: CharacterCombatComponent = %CharacterCombatComponent
 @onready var skill_component: CharacterSkillComponent = %CharacterSkillComponent
@@ -63,11 +64,18 @@ signal status_applied_to_character(character: Character, status_instance: SkillS
 signal status_removed_from_character(character: Character, status_id: StringName, status_instance_data_before_removal: SkillStatusData)
 signal status_updated_on_character(character: Character, status_instance: SkillStatusData, old_stacks: int, old_duration: int)
 
-func _ready():
+func _ready() -> void:
+	# 初始化防御指示器
+	defense_indicator.visible = false
+	
+	# 初始化角色数据
 	if character_data:
 		_initialize_from_data(character_data)
 	else:
 		push_error("角色场景 " + name + " 没有分配CharacterData!")
+	
+	# 初始化角色动画
+	_setup_animations()
 	# 初始化组件
 	_init_components()
 
@@ -157,8 +165,27 @@ func restore_mp(amount: float, source: Variant = null) -> float:
 	return 0.0
 
 ## 播放动画
-func play_animation(animation_name: String) -> void:
-	print("假装播放了动画：", animation_name)
+## [param animation_name] 动画名称
+## [return] 返回一个信号，动画播放完成时会触发
+func play_animation(animation_name: StringName) -> void:
+	print("%s 播放动画：%s" % [character_name, animation_name])
+	
+	# 检查是否有对应的动画
+	if animation_player.has_animation(animation_name):
+		# 直接播放动画
+		animation_player.play(animation_name)
+		await animation_player.animation_finished
+	else:
+		push_warning("动画 %s 不存在" % animation_name)
+		
+## 设置角色动画
+func _setup_animations() -> void:
+	# 使用动画辅助类设置原型动画
+	if animation_player:
+		var CharacterAnimations = load("res://scripts/core/character/character_animations.gd")
+		CharacterAnimations.setup_prototype_animations(animation_player)
+	else:
+		push_error("找不到AnimationPlayer组件，无法设置动画")
 
 #region --- UI 更新辅助方法 ---
 func _update_name_display() -> void:

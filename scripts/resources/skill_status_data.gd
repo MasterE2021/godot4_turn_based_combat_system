@@ -48,7 +48,7 @@ enum StatusType {
 
 # 状态间交互
 @export var overrides_states: Array[StringName] = []							## 此状态应用时会移除的目标状态ID列表
-@export var resisted_by_states: Array[StringName] = []							## 如果目标拥有这些状态之一，则此状态无法应用
+@export var resisted_by_states: Array[StringName] = []						## 如果目标拥有这些状态之一，则此状态无法应用
 
 # 行动限制
 @export_group("行动限制")

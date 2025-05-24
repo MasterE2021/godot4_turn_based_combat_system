@@ -24,6 +24,10 @@ signal enemy_action_executed(attacker, target, damage) # 敌人执行了行动
 
 func _ready():
 	_init_core_systems()
+	
+	# 订阅SkillSystem的视觉效果请求信号
+	SkillSystem.visual_effect_requested.connect(_on_visual_effect_requested)
+	
 	_start_battle()
 
 func get_valid_ally_targets(caster: Character, include_self: bool) -> Array[Character]:
@@ -39,6 +43,46 @@ func get_valid_enemy_targets(caster: Character) -> Array[Character]:
 		visual_effects,
 	)
 	return SkillSystem.get_valid_enemy_targets(skill_context, caster)
+
+# 玩家选择行动 - 由BattleScene调用
+func player_select_action(action_type: String, params: Dictionary = {}) -> void:
+	if not state_manager.is_in_state(BattleStateManager.BattleState.PLAYER_TURN):
+		return
+		
+	print_rich("[color=cyan]玩家选择行动: %s[/color]" % action_type)
+	
+	# 设置为行动执行状态
+	state_manager.change_state(BattleStateManager.BattleState.ACTION_EXECUTION)
+	
+	# 获取当前回合角色
+	var current_character = turn_order_manager.current_character
+	
+	# 执行选择的行动
+	match action_type:
+		"attack":
+			if params and params.has("target") and params.target is Character:
+				await _execute_attack(current_character, params.target)
+			else:
+				print_rich("[color=red]错误：攻击需要选择有效目标[/color]")
+				state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN) # 返回选择状态
+				return
+		"defend":
+			await _execute_defend(current_character)
+		"skill":
+			if params and params.has("skill") and params.skill is SkillData:
+				var targets = params.get("targets", [] as Array[Character])
+				await _execute_skill(current_character, params.skill, targets)
+			else:
+				print_rich("[color=red]错误：释放技能需要指定有效的技能数据[/color]")
+				state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
+				return
+		_:
+			print_rich("[color=red]未知行动类型: %s[/color]" % action_type)
+			state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
+			return
+	
+	# 行动结束后转入回合结束
+	state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
 
 ## 执行动作
 ## [param action_type] 动作类型
@@ -123,76 +167,78 @@ func _execute_item(user: Character, item, targets: Array) -> Dictionary:
 	return await execute_action(CharacterCombatComponent.ActionType.ITEM, user, null, params)
 
 ## 初始化核心系统
-func _init_core_systems() -> void:	
-	# 创建角色注册管理器
+func _init_core_systems() -> void:
+	# 初始化各个核心系统
 	character_registry = BattleCharacterRegistryManager.new()
-	add_child(character_registry)
-	character_registry.name = "BattleCharacterRegistryManager"
-	character_registry.initialize()
-
-	# 创建状态管理器
 	state_manager = BattleStateManager.new()
-	add_child(state_manager)
-	state_manager.name = "BattleStateManager"
-	state_manager.state_changed.connect(_on_battle_state_changed)
-
-	# 创建回合管理器
-	turn_order_manager = TurnOrderManager.new()
-	add_child(turn_order_manager)
-	turn_order_manager.name = "TurnOrderManager"
-	turn_order_manager.initialize(character_registry)
-
-	# 创建视觉效果系统
 	visual_effects = BattleVisualEffects.new()
-	add_child(visual_effects)
-	visual_effects.initialize(DAMAGE_NUMBER_SCENE)
-	
-	# 创建战斗规则管理器
+	turn_order_manager = TurnOrderManager.new()
 	combat_rules = CombatRuleManager.new()
+	
+	# 添加到场景树
+	add_child(character_registry)
+	add_child(state_manager)
+	add_child(visual_effects)
+	add_child(turn_order_manager)
 	add_child(combat_rules)
+	
+	# 订阅信号
+	state_manager.state_changed.connect(_on_battle_state_changed)
+	turn_order_manager.turn_changed.connect(_on_turn_order_changed)
+	
+	# 设置名称
+	character_registry.name = "BattleCharacterRegistryManager"
+	state_manager.name = "BattleStateManager"
+	visual_effects.name = "VisualEffectsHandler"
+	turn_order_manager.name = "TurnOrderManager"
+	combat_rules.name = "CombatRuleManager"
+	
+	# 初始化
+	character_registry.initialize()
+	turn_order_manager.initialize(character_registry)
+	# 初始化战斗规则管理器
 	combat_rules.initialize(character_registry)
-
-# 玩家选择行动 - 由BattleScene调用
-func player_select_action(action_type: String, params: Dictionary = {}) -> void:
-	if not state_manager.is_in_state(BattleStateManager.BattleState.PLAYER_TURN):
-		return
-		
-	print_rich("[color=cyan]玩家选择行动: %s[/color]" % action_type)
-	
-	# 设置为行动执行状态
-	state_manager.change_state(BattleStateManager.BattleState.ACTION_EXECUTION)
-	
-	# 获取当前回合角色
-	var current_character = turn_order_manager.current_character
-	
-	# 执行选择的行动
-	match action_type:
-		"attack":
-			if params and params.has("target") and params.target is Character:
-				await _execute_attack(current_character, params.target)
-			else:
-				print_rich("[color=red]错误：攻击需要选择有效目标[/color]")
-				state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN) # 返回选择状态
-				return
-		"defend":
-			await _execute_defend(current_character)
-		"skill":
-			if params and params.has("skill") and params.skill is SkillData:
-				var targets = params.get("targets", [] as Array[Character])
-				await _execute_skill(current_character, params.skill, targets)
-			else:
-				print_rich("[color=red]错误：释放技能需要指定有效的技能数据[/color]")
-				state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
-				return
-		_:
-			print_rich("[color=red]未知行动类型: %s[/color]" % action_type)
-			state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
-			return
-	
-	# 行动结束后转入回合结束
-	state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
+	visual_effects.initialize(DAMAGE_NUMBER_SCENE)
 
 # 处理战斗状态变化
+## 处理视觉效果请求
+## [param effect_type] 效果类型
+## [param target] 目标节点
+## [param params] 参数字典
+func _on_visual_effect_requested(effect_type: StringName, target: Node, params: Dictionary) -> void:
+	if not visual_effects or not is_instance_valid(target):
+		return
+	
+	# 根据效果类型调用相应的视觉效果方法
+	match effect_type:
+		&"damage":
+			visual_effects.show_damage_number(target, params.get("amount", 0), false)
+		&"heal":
+			visual_effects.show_heal_number(target, params.get("amount", 0))
+		&"status":
+			visual_effects.show_status_text(target, params.get("text", "Status"), params.get("is_positive", true))
+		# &"hit":
+		# 	if target is Character and target.has_method("play_animation"):
+		# 		target.play_animation("hit")
+		# &"cast":
+		# 	if target is Character and target.has_method("play_animation"):
+		# 		target.play_animation("skill")
+		_:
+			push_warning("BattleManager: 未知的视觉效果类型: %s" % effect_type)
+
+## 处理回合顺序变化
+func _on_turn_order_changed(character: Character) -> void:
+	# 处理回合变化
+	print("Turn changed to: %s" % character.character_name)
+	turn_changed.emit(character)
+	
+	# 如果是玩家角色，通知UI玩家需要行动
+	if character_registry.is_player_character(character):
+		state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
+	else:
+		# 如果是敌人，转到敌人回合状态
+		state_manager.change_state(BattleStateManager.BattleState.ENEMY_TURN)
+
 func _on_battle_state_changed(old_state, new_state):
 	print("战斗状态变化: ", state_manager.get_state_name(old_state), " -> ", state_manager.get_state_name(new_state))
 	
@@ -228,7 +274,7 @@ func _on_battle_state_changed(old_state, new_state):
 			await get_tree().create_timer(0.5).timeout
 			
 			# 调用当前角色的回合结束方法，更新状态效果持续时间
-			_update_current_character_turn_end()
+			await _update_current_character_turn_end()
 			
 			# 检查战斗是否结束
 			var is_battle_ended = combat_rules.check_battle_end_conditions()
@@ -360,4 +406,4 @@ func _update_current_character_turn_end() -> void:
 	var current_character = turn_order_manager.current_character
 	if is_instance_valid(current_character) and current_character.combat_component:
 		print_rich("[color=yellow]更新角色 %s 的状态持续时间[/color]" % current_character.character_name)
-		current_character.combat_component.on_turn_end()
+		await current_character.combat_component.on_turn_end()

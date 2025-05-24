@@ -84,15 +84,14 @@ func _execute_attack(attacker: Character, target: Character) -> Dictionary:
 	
 	print_rich("[color=yellow]%s 攻击 %s[/color]" % [attacker.character_name, target.character_name])
 	
-	# 计算伤害
-	var base_damage := attacker.attack_power
-	var final_damage = round(base_damage - target.defense_power)
+	# 播放攻击动画
+	await attacker.play_animation("attack")
 	
-	# 确保伤害至少为1
-	final_damage = max(1, final_damage)
+	# 计算伤害
+	var damage = _calculate_damage(attacker, target)
 	
 	# 应用伤害
-	var actual_damage = target.combat_component.take_damage(final_damage, attacker)
+	var actual_damage = target.combat_component.take_damage(damage, attacker)
 	
 	# 构建结果
 	var result = {
@@ -114,6 +113,9 @@ func _execute_defend(character: Character) -> Dictionary:
 		return {"success": false, "error": "无效的角色引用"}
 	
 	print_rich("[color=cyan]%s 选择防御[/color]" % [character.character_name])
+	
+	# 播放防御动画
+	await character.play_animation("defend")
 	
 	# 设置防御状态
 	set_defending(true)
@@ -145,6 +147,9 @@ func _execute_skill(caster: Character, skill: SkillData, targets: Array[Characte
 	if not _skill_component.has_enough_mp_for_skill(skill):
 		return {"success": false, "error": "魔法值不足"}
 	
+	# 播放施法动画
+	await caster.play_animation("skill")
+	
 	# 尝试执行技能
 	var result = await _skill_component.attempt_execute_skill(caster, skill, targets, skill_context)
 	
@@ -164,6 +169,9 @@ func _execute_item(user: Character, item, targets: Array) -> Dictionary:
 	
 	print_rich("[color=green]%s 使用道具 %s[/color]" % [user.character_name, item.name if item.has("name") else "未知道具"])
 	
+	# 播放使用道具动画
+	await user.play_animation("item")
+	
 	# 这里是道具使用的占位实现
 	# 实际项目中需要根据道具类型实现不同的效果
 	var result = {
@@ -181,6 +189,20 @@ func _execute_item(user: Character, item, targets: Array) -> Dictionary:
 func set_defending(value: bool) -> void:
 	is_defending = value
 
+## 计算伤害
+## [param attacker] 攻击者
+## [param target] 目标
+## [return] 计算后的伤害值
+func _calculate_damage(attacker: Character, target: Character) -> float:
+	# 基础伤害计算
+	var base_damage := attacker.attack_power
+	var final_damage = round(base_damage - target.defense_power)
+	
+	# 确保伤害至少为1
+	final_damage = max(1, final_damage)
+	
+	return final_damage
+
 ## 伤害处理方法
 ## [param base_damage] 基础伤害值
 ## [param source] 伤害来源角色
@@ -196,7 +218,11 @@ func take_damage(base_damage: float, source: Variant = null) -> float:
 
 	if final_damage <= 0:
 		return 0
-	# 消耗生命值	
+	
+	# 播放受击动画
+	owner.play_animation("hit") # 不等待动画完成，允许并行处理
+	
+	# 消耗生命值
 	_skill_component.consume_hp(final_damage, source)
 
 	return final_damage

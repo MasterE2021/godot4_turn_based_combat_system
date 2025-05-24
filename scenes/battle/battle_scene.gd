@@ -73,12 +73,7 @@ func _on_turn_changed(character: Character) -> void:
 	
 	# 更新角色状态显示等
 
-func _on_battle_ended(is_victory: bool) -> void:
-	if is_victory:
-		update_battle_info("战斗胜利！")
-	else:
-		update_battle_info("战斗失败...")
-	
+func _on_battle_ended(_is_victory: bool) -> void:
 	# 隐藏所有战斗UI
 	_hide_all_menus()
 	

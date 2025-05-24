@@ -89,8 +89,6 @@ func restore_mp(amount: float, source: Variant = null) -> float:
 ## 消耗生命值
 func consume_hp(amount: float, source: Variant = null) -> bool:
 	var current_hp = _active_attribute_set.get_current_value(&"CurrentHealth")
-	if current_hp < amount:
-		return false
 	_active_attribute_set.set_current_value(&"CurrentHealth", current_hp - amount, source)
 	return true
 
@@ -325,8 +323,8 @@ func _apply_attribute_modifiers_for_status(runtime_status_inst: SkillStatusData,
 func _check_status_resistance(status_template: SkillStatusData, result_info: Dictionary) -> bool:
 	# 遍历所有当前已有的状态，检查是否有状态会抵抗即将应用的状态
 	for status_id in _active_statuses:
-		var active_status = _active_statuses[status_id]
-		if active_status.resists_statuses.has(status_template.status_id):
+		var active_status : SkillStatusData = _active_statuses[status_id]
+		if active_status.resisted_by_states.has(status_template.status_id):
 			result_info["applied_successfully"] = false
 			result_info["reason"] = "resisted_by_status"
 			result_info["resisted_by"] = active_status.status_id

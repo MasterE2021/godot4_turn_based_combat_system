@@ -39,17 +39,6 @@ func process_effect(effect_data: SkillEffectData, source: Character, target: Cha
 		if results.success and is_instance_valid(applied_status_instance):
 			results["reason"] = application_result.get("reason", "applied") # 更新为成功的reason
 
-			# 状态成功应用/更新后，触发其初始效果
-			if not applied_status_instance.initial_effects.is_empty() and _context:
-				if _context.has_method("apply_skill_effects_to_targets"):
-					await _context.apply_skill_effects_to_targets(
-						applied_status_instance.get_initial_effects(),
-						applied_status_instance.source_char, 
-						[target]
-					)
-				else:
-					push_warning("ApplyStatusEffectProcessor: Cannot trigger initial_effects - Method missing in context.")
-			
 			# 播放状态效果成功应用的动画
 			_request_visual_effect(&"status", target, {
 				"status_id": applied_status_instance.status_id, 
