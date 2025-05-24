@@ -20,12 +20,12 @@ signal effect_applied(effect_type, source, target, result)
 class SkillExecutionContext:
 	var character_registry: BattleCharacterRegistryManager
 	var visual_effects_handler: BattleVisualEffects
-	var battle_state_manager: Node = null
 	
-	func _init(p_registry: BattleCharacterRegistryManager, p_vfx_handler: BattleVisualEffects, p_state_manager: Node = null):
+	func _init(
+			p_registry: BattleCharacterRegistryManager, 
+			p_vfx_handler: BattleVisualEffects) -> void:
 		character_registry = p_registry
 		visual_effects_handler = p_vfx_handler
-		battle_state_manager = p_state_manager
 
 func _ready() -> void:
 	_init_effect_processors()
@@ -35,9 +35,11 @@ func _ready() -> void:
 ## [param processor] 要注册的效果处理器
 ## [return] 是否成功注册
 func register_effect_processor(processor: EffectProcessor) -> void:
-	if processor and processor.has_method("get_processor_id") and processor.has_method("process"):
+	if processor and processor.has_method("get_processor_id") and processor.has_method("process_effect"):
 		var processor_id = processor.get_processor_id()
 		_effect_processors[processor_id] = processor
+		# 设置处理器上下文
+		processor.set_context(self)
 		print("SkillSystem: Registered effect processor for type: %s" % processor_id)
 	else:
 		push_error("SkillSystem: Failed to register invalid effect processor.")
@@ -45,10 +47,10 @@ func register_effect_processor(processor: EffectProcessor) -> void:
 # 在初始化方法中注册新的效果处理器
 func _init_effect_processors() -> void:
 	# 注册处理器
-	register_effect_processor(DamageEffectProcessor.new(self))
-	register_effect_processor(HealingEffectProcessor.new(self))
-	register_effect_processor(ApplyStatusProcessor.new(self))
-	register_effect_processor(DispelStatusProcessor.new(self))
+	register_effect_processor(DamageEffectProcessor.new())
+	register_effect_processor(HealingEffectProcessor.new())
+	register_effect_processor(ApplyStatusProcessor.new())
+	register_effect_processor(DispelStatusProcessor.new())
 
 ## 根据效果类型获取处理器ID
 func _get_effect_processor_for_type(effect: SkillEffectData) -> EffectProcessor:
@@ -272,7 +274,12 @@ func _process_skill_effects_async(context: SkillExecutionContext, caster: Charac
 ## [param skill] 技能数据
 ## [param effect] 效果数据
 ## [return] 效果应用结果
-func _apply_single_effect(context: SkillExecutionContext, caster: Character, target: Character, skill: SkillData, effect: SkillEffectData) -> Dictionary:
+func _apply_single_effect(
+		context: SkillExecutionContext, 
+		caster: Character, 
+		target: Character, 
+		_skill: SkillData, 
+		effect: SkillEffectData) -> Dictionary:
 	# 检查参数有效性
 	if !is_instance_valid(caster) or !is_instance_valid(target):
 		push_error("SkillSystem: 无效的角色引用")
@@ -285,7 +292,7 @@ func _apply_single_effect(context: SkillExecutionContext, caster: Character, tar
 	# 获取对应的处理器
 	var processor = _get_effect_processor_for_type(effect)
 	
-	if processor and processor.has_method("can_process_effect") and processor.can_process_effect(effect):
+	if processor and processor.can_process_effect(effect):
 		# 为处理器设置上下文
 		processor.set_context(context)
 		

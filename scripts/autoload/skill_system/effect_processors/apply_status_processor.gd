@@ -18,13 +18,7 @@ func process_effect(effect_data: SkillEffectData, source: Character, target: Cha
 
 	results["applied_status_id"] = status_template_to_apply.status_id # 记录尝试应用的ID
 
-	# 施法视觉 (可以考虑移到 SkillSystem 的 execute_skill 中，在所有效果处理之前执行一次)
-	# 如果每个效果都触发cast，会很重复。这里假设是效果命中前的预备视觉。
-	var cast_vfx_params = {}
-	# if is_instance_valid(skill_context) and skill_context.has_meta("element"): # 假设技能有元素
-	#    cast_vfx_params["element"] = skill_context.get_meta("element")
-	# _request_visual_effect(&"status_cast_attempt", source, cast_vfx_params) # 使用更具体的key
-
+	# 等待短暂时间
 	if Engine.get_main_loop():
 		await Engine.get_main_loop().process_frame
 	
@@ -45,32 +39,40 @@ func process_effect(effect_data: SkillEffectData, source: Character, target: Cha
 			results["reason"] = application_result.get("reason", "applied") # 更新为成功的reason
 
 			# 状态成功应用/更新后，触发其初始效果
-			if not applied_status_instance.initial_effects.is_empty():
-				if _skill_system and _skill_system.has_method("_apply_skill_effects_to_targets"):
-					await _skill_system._apply_skill_effects_to_targets(
+			if not applied_status_instance.initial_effects.is_empty() and _context:
+				if _context.has_method("apply_skill_effects_to_targets"):
+					await _context.apply_skill_effects_to_targets(
 						applied_status_instance.get_initial_effects(),
 						applied_status_instance.source_char, 
 						[target]
 					)
 				else:
-					push_warning("ApplyStatusEffectProcessor: Cannot trigger initial_effects - BattleManager or method missing.")
+					push_warning("ApplyStatusEffectProcessor: Cannot trigger initial_effects - Method missing in context.")
 			
 			# 播放状态效果成功应用的动画
-			_request_visual_effect(&"status_applied_success", target, {"status_id": applied_status_instance.status_id, "status_name": applied_status_instance.status_name, "is_buff": applied_status_instance.status_type == SkillStatusData.StatusType.BUFF})
-			if effect_data.visual_effect != "": # 效果自定义的视觉
-				_request_visual_effect(effect_data.visual_effect, target, {"status_name": applied_status_instance.status_name})
+			_request_visual_effect(&"status", target, {
+				"status_id": applied_status_instance.status_id, 
+				"status_name": applied_status_instance.status_name, 
+				"is_buff": applied_status_instance.status_type == SkillStatusData.StatusType.BUFF,
+				"text": applied_status_instance.status_name
+			})
 
 			var message = "[color=purple]%s 被施加了 %s 状态 (来源: %s)[/color]" % [target.character_name, applied_status_instance.status_name, source.character_name]
 			print_rich(message)
-		# else if results.success is false but a status_instance was returned (e.g. for update signals)
-		#    pass # Might be just an update, not a new application, but still successful in a way
 		elif not results.success: # apply_status_effect 返回失败
-			_request_visual_effect(&"status_apply_failed_logic", target, {"status_id": status_template_to_apply.status_id, "reason": results.reason})
+			_request_visual_effect(&"status", target, {
+				"status_id": status_template_to_apply.status_id, 
+				"reason": results.reason,
+				"text": "抵抗: " + status_template_to_apply.status_name
+			})
 			var fail_message = "[color=orange]%s 未能被施加 %s 状态 (原因: %s)[/color]" % [target.character_name, status_template_to_apply.status_name, results.reason]
 			print_rich(fail_message)
 	else: # 未通过几率判定
 		results["reason"] = "chance_roll_failed (%.2f vs %.2f)" % [roll, chance]
-		_request_visual_effect(&"status_resist_chance", target, {"status_id": status_template_to_apply.status_id})
+		_request_visual_effect(&"status", target, {
+			"status_id": status_template_to_apply.status_id,
+			"text": "抵抗: " + status_template_to_apply.status_name
+		})
 		var resist_message = "[color=teal]%s 抵抗了状态效果 %s (几率判定)[/color]" % [target.character_name, status_template_to_apply.status_name]
 		print_rich(resist_message)
 		

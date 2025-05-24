@@ -28,9 +28,6 @@ func initialize(attribute_set_resource: SkillAttributeSet, skills: Array[SkillDa
 	if not _active_attribute_set:
 		push_error("无法初始化AttributeSet，资源无效！")
 		return
-	if not _skills:
-		push_error("无法初始化技能列表，技能数据无效！")
-		return
 
 	# 初始化AttributeSet，这将创建并配置所有属性实例
 	_active_attribute_set.initialize_set()

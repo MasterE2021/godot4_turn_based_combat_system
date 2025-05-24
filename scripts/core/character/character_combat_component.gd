@@ -1,3 +1,4 @@
+@tool
 extends Node
 class_name CharacterCombatComponent
 
@@ -84,9 +85,8 @@ func _execute_attack(attacker: Character, target: Character) -> Dictionary:
 	print_rich("[color=yellow]%s 攻击 %s[/color]" % [attacker.character_name, target.character_name])
 	
 	# 计算伤害
-	var base_damage = attacker.physical_attack
-	var damage_reduction = target.physical_defense / (target.physical_defense + 100.0)
-	var final_damage = round(base_damage * (1.0 - damage_reduction))
+	var base_damage := attacker.attack_power
+	var final_damage = round(base_damage - target.defense_power)
 	
 	# 确保伤害至少为1
 	final_damage = max(1, final_damage)
@@ -224,10 +224,16 @@ func _die(death_source: Variant = null):
 #region --- 信号处理 ---
 ## 属性当前值变化的处理
 func _on_attribute_current_value_changed(
-		attribute_instance: SkillAttribute, old_value: float, 
+		attribute_instance: SkillAttribute, _old_value: float, 
 		new_value: float, source: Variant
 	) -> void:
 	# 检查是否是生命值变化
 	if attribute_instance.attribute_name == &"CurrentHealth" and new_value <= 0:
 		_die(source)
 #endregion
+
+func _get_configuration_warnings() -> PackedStringArray:
+	if not _skill_component:
+		return ["CharacterCombatComponent: SkillComponent is not set."]
+	return []
+	

@@ -44,7 +44,7 @@ func _ready() -> void:
 		action_menu.hide()
 	
 	# 连接BattleManager信号
-	battle_manager.battle_state_changed.connect(_on_battle_state_changed)
+	battle_manager.state_manager.state_changed.connect(_on_battle_state_changed)
 	battle_manager.turn_changed.connect(_on_turn_changed)
 	battle_manager.battle_ended.connect(_on_battle_ended)
 	battle_manager.player_action_required.connect(_on_player_action_required)
@@ -54,7 +54,7 @@ func _ready() -> void:
 	battle_manager._start_battle()
 
 # 处理BattleManager发出的信号
-func _on_battle_state_changed(new_state: BattleStateManager.BattleState) -> void:
+func _on_battle_state_changed(_old_state: BattleStateManager.BattleState, new_state: BattleStateManager.BattleState) -> void:
 	match new_state:
 		BattleStateManager.BattleState.PLAYER_TURN:
 			# 当玩家回合开始时，战斗管理器会通过player_action_required信号通知
@@ -95,7 +95,8 @@ func _on_enemy_action_executed(attacker: Character, target: Character, damage: i
 func _on_action_menu_attack_pressed() -> void:
 	if battle_manager.state_manager.is_in_state(BattleStateManager.BattleState.PLAYER_TURN):
 		# 选择第一个存活的敌人作为目标
-		var valid_targets = battle_manager.get_valid_enemy_targets(battle_manager.current_turn_character)
+		var caster : Character = battle_manager.turn_order_manager.current_character
+		var valid_targets = battle_manager.get_valid_enemy_targets(caster)
 		if !valid_targets.is_empty():
 			var target = valid_targets[0] # 这里简化为直接选择第一个敌人
 			battle_manager.player_select_action("attack", target)
@@ -198,16 +199,17 @@ func update_battle_info(text: String) -> void:
 func _show_action_menu() -> void:
 	_hide_all_menus() # 假设这是你隐藏其他UI元素的方法
 	
-	if action_menu: # 假设 action_menu 是你的行动菜单节点
-		var current_character: Character = battle_manager.current_turn_character # BattleManager 提供当前行动角色
-		if is_instance_valid(current_character):
-			var can_use_any_special_skill : bool = current_character.has_enough_mp_for_any_skill()
-			action_menu.set_skill_button_enabled(can_use_any_special_skill) # 假设菜单有此方法
-		else:
-			action_menu.set_skill_button_enabled(false) # 没有当前角色则禁用
-		
-		action_menu.visible = true
-		action_menu.setup_default_focus() # 假设菜单有此方法
+	if not action_menu: # 假设 action_menu 是你的行动菜单节点
+		return
+	var current_character: Character =  battle_manager.turn_order_manager.current_character
+	if is_instance_valid(current_character):
+		var can_use_any_special_skill : bool = current_character.has_enough_mp_for_any_skill()
+		action_menu.set_skill_button_enabled(can_use_any_special_skill) # 假设菜单有此方法
+	else:
+		action_menu.set_skill_button_enabled(false) # 没有当前角色则禁用
+	
+	action_menu.visible = true
+	action_menu.setup_default_focus() # 假设菜单有此方法
 
 func _open_skill_menu() -> void:
 	_hide_all_menus()

@@ -15,31 +15,31 @@ class_name Character
 
 #region --- 常用属性的便捷Getter ---
 var current_hp: float:
-	get: return skill_component._active_attribute_set.get_current_value(&"CurrentHealth") if skill_component and skill_component.active_attribute_set else 0.0
+	get: return skill_component.get_current_value(&"CurrentHealth") if skill_component else 0.0
 	set(value): assert(false, "cannot set current_hp")
 var max_hp: float:
-	get: return skill_component.active_attribute_set.get_current_value(&"MaxHealth") if skill_component and skill_component.active_attribute_set else 0.0
+	get: return skill_component.get_current_value(&"MaxHealth") if skill_component else 0.0
 	set(value): assert(false, "cannot set max_hp")
 var current_mp: float:
-	get: return skill_component.active_attribute_set.get_current_value(&"CurrentMana") if skill_component and skill_component.active_attribute_set else 0.0
+	get: return skill_component.get_current_value(&"CurrentMana") if skill_component else 0.0
 	set(value): assert(false, "cannot set current_mp")
 var max_mp: float:
-	get: return skill_component.active_attribute_set.get_current_value(&"MaxMana") if skill_component and skill_component.active_attribute_set else 0.0
+	get: return skill_component.get_current_value(&"MaxMana") if skill_component else 0.0
 	set(value): assert(false, "cannot set max_mp")
 var attack_power: float:
-	get: return skill_component.active_attribute_set.get_current_value(&"AttackPower") if skill_component and skill_component.active_attribute_set else 0.0
+	get: return skill_component.get_current_value(&"AttackPower") if skill_component else 0.0
 	set(value): assert(false, "cannot set attack_power")
 var defense_power: float:
-	get: return skill_component.active_attribute_set.get_current_value(&"DefensePower") if skill_component and skill_component.active_attribute_set else 0.0
+	get: return skill_component.get_current_value(&"DefensePower") if skill_component else 0.0
 	set(value): assert(false, "cannot set defense_power")
 var speed: float:
-	get: return skill_component.active_attribute_set.get_current_value(&"Speed") if skill_component and skill_component.active_attribute_set else 0.0
+	get: return skill_component.get_current_value(&"Speed") if skill_component else 0.0
 	set(value): assert(false, "cannot set speed")
 var magic_attack : float:
-	get: return skill_component.active_attribute_set.get_current_value(&"MagicAttack") if skill_component and skill_component.active_attribute_set else 0.0
+	get: return skill_component.get_current_value(&"MagicAttack") if skill_component else 0.0
 	set(value): assert(false, "cannot set magic_attack")
 var magic_defense : float:
-	get: return skill_component.active_attribute_set.get_current_value(&"MagicDefense") if skill_component and skill_component.active_attribute_set else 0.0
+	get: return skill_component.get_current_value(&"MagicDefense") if skill_component else 0.0
 	set(value): assert(false, "cannot set magic_defense")
 var character_name : StringName:
 	get: return character_data.character_name if character_data else "" 
@@ -79,7 +79,7 @@ func _ready():
 	print("%s initialized. HP: %.1f/%.1f, Attack: %.1f" % [character_data.character_name, current_hp, max_hp, attack_power])
 
 ## 初始化组件
-func _init_components() -> void:	
+func _init_components() -> void:
 	if not combat_component:
 		push_error("战斗组件未初始化！")
 		return

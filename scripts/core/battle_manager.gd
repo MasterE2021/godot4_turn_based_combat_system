@@ -30,7 +30,6 @@ func get_valid_ally_targets(caster: Character, include_self: bool) -> Array[Char
 	var skill_context := SkillSystem.SkillExecutionContext.new(
 		character_registry,
 		visual_effects,
-		state_manager
 	)
 	return SkillSystem.get_valid_ally_targets(skill_context, caster, include_self)
 
@@ -38,7 +37,6 @@ func get_valid_enemy_targets(caster: Character) -> Array[Character]:
 	var skill_context := SkillSystem.SkillExecutionContext.new(
 		character_registry,
 		visual_effects,
-		state_manager
 	)
 	return SkillSystem.get_valid_enemy_targets(skill_context, caster)
 
@@ -87,7 +85,6 @@ func execute_skill(caster: Character, skill: SkillData, targets: Array = []) -> 
 	var skill_context = SkillSystem.SkillExecutionContext.new(
 		character_registry,
 		visual_effects,
-		state_manager
 	)
 	
 	var params = {
@@ -195,6 +192,13 @@ func _on_battle_state_changed(old_state, new_state):
 			# 通知UI需要玩家输入
 			print("玩家回合：等待输入...")
 			player_action_required.emit(turn_order_manager.current_character)
+		
+		BattleStateManager.BattleState.ENEMY_TURN:
+			# 执行敌人AI
+			print("敌人回合：", turn_order_manager.current_character.character_name, " 思考中...")
+			# 延迟一下再执行AI，避免敌人行动过快
+			await get_tree().create_timer(1.0).timeout
+			_execute_enemy_ai()
 			
 		BattleStateManager.BattleState.ROUND_END:
 			print("回合结束...")
@@ -206,19 +210,11 @@ func _on_battle_state_changed(old_state, new_state):
 			print("胜利!")
 			# 处理胜利后的逻辑
 			battle_ended.emit(true)
-			
 
 		BattleStateManager.BattleState.DEFEAT:
 			print("失败!")
 			# 处理失败后的逻辑
 			battle_ended.emit(false)
-			
-		BattleStateManager.BattleState.ENEMY_TURN:
-			# 执行敌人AI
-			print("敌人回合：", turn_order_manager.current_character.character_name, " 思考中...")
-			# 延迟一下再执行AI，避免敌人行动过快
-			await get_tree().create_timer(1.0).timeout
-			_execute_enemy_ai()
 			
 		BattleStateManager.BattleState.ACTION_EXECUTION:
 			# 执行选择的行动
@@ -296,10 +292,8 @@ func _next_turn() -> void:
 	# 判断是玩家还是敌人的回合
 	if character_registry.is_player_character(next_character):
 		state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
-		player_action_required.emit(next_character)
 	else:
 		state_manager.change_state(BattleStateManager.BattleState.ENEMY_TURN)
-		_execute_enemy_ai()
 
 # 执行敌人AI
 func _execute_enemy_ai() -> void:

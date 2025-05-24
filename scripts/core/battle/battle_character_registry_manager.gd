@@ -148,6 +148,46 @@ func is_team_defeated(is_player_team_check: bool) -> bool:
 			return false # 只要有一个存活，队伍就未被击败
 	return true # 所有角色都已死亡
 
+## 检查角色是否在玩家队伍
+## [param character] 要检查的角色
+## [return] 是否在玩家队伍
+func is_player_character(character: Character) -> bool:
+	return character in _player_team
+
+## 获取角色的友方队伍
+## [param character] 目标角色
+## [param include_self] 是否包含自己
+## [return] 友方队伍角色列表
+func get_allied_team_for_character(character: Character, include_self: bool = true) -> Array[Character]:
+	var team: Array[Character] = []
+	if is_player_character(character):
+		# 玩家角色的盟友是玩家队伍
+		team = get_player_team(true)
+	else:
+		# 敌人角色的盟友是敌人队伍
+		team = get_enemy_team(true)
+	
+	# 如果不包含自己，则移除
+	if not include_self and character in team:
+		var filtered_team: Array[Character] = []
+		for ally in team:
+			if ally != character:
+				filtered_team.append(ally)
+		return filtered_team
+	
+	return team
+
+## 获取角色的敌对队伍
+## [param character] 目标角色
+## [return] 敌对队伍角色列表
+func get_opposing_team_for_character(character: Character) -> Array[Character]:
+	if is_player_character(character):
+		# 玩家角色的敌人是敌人队伍
+		return get_enemy_team(true)
+	else:
+		# 敌人角色的敌人是玩家队伍
+		return get_player_team(true)
+
 #region --- 信号处理 ---
 ## 当角色被击败时自动反注册
 ## [param defeated_character] 被击败的角色
