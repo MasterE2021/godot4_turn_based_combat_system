@@ -161,11 +161,11 @@ func _validate_skill_usability(context: SkillExecutionContext, caster: Character
 		result.reason = "Invalid target(s) for skill scope"
 		return result
 		
-	# 检查施法者是否处于无法施法的状态 (例如：沉默、眩晕)
-	if caster.has_status(&"Silenced") or caster.has_status(&"Stunned"): # 假设有这些状态ID
-		result.is_usable = false
-		result.reason = "Cannot cast (Silenced/Stunned)"
-		return result
+	# # 检查施法者是否处于无法施法的状态 (例如：沉默、眩晕)
+	# if caster.has_status(&"Silenced") or caster.has_status(&"Stunned"): # 假设有这些状态ID
+	# 	result.is_usable = false
+	# 	result.reason = "Cannot cast (Silenced/Stunned)"
+	# 	return result
 
 	return result
 
@@ -251,7 +251,7 @@ func _process_skill_effects_async(context: SkillExecutionContext, caster: Charac
 					continue
 					
 				# 应用单个效果
-				var effect_result = await _apply_single_effect(context, caster, effect_target, skill_data, effect)
+				var effect_result = await _apply_single_effect(caster, effect_target, effect, skill_data)
 				
 				# 合并结果
 				for key in effect_result:
@@ -274,12 +274,7 @@ func _process_skill_effects_async(context: SkillExecutionContext, caster: Charac
 ## [param skill] 技能数据
 ## [param effect] 效果数据
 ## [return] 效果应用结果
-func _apply_single_effect(
-		context: SkillExecutionContext, 
-		caster: Character, 
-		target: Character, 
-		_skill: SkillData, 
-		effect: SkillEffectData) -> Dictionary:
+func _apply_single_effect(caster: Character, target: Character, effect: SkillEffectData, _skill: SkillData) -> Dictionary:
 	# 检查参数有效性
 	if !is_instance_valid(caster) or !is_instance_valid(target):
 		push_error("SkillSystem: 无效的角色引用")
@@ -293,9 +288,6 @@ func _apply_single_effect(
 	var processor = _get_effect_processor_for_type(effect)
 	
 	if processor and processor.can_process_effect(effect):
-		# 为处理器设置上下文
-		processor.set_context(context)
-		
 		# 使用处理器处理效果
 		var result = await processor.process_effect(effect, caster, target)
 		
@@ -435,3 +427,51 @@ func get_valid_enemy_targets(context: SkillExecutionContext, caster: Character) 
 		if enemy.is_alive:
 			valid_targets.append(enemy)
 	return valid_targets
+
+## 处理状态效果的辅助方法
+## [param context] 技能执行上下文
+## [param effect_list] 效果列表
+## [param status] 状态数据
+## [param character] 拥有状态的角色
+## [return] 效果处理结果
+func _process_status_effects(effect_list: Array, status: SkillStatusData, character: Character) -> Dictionary:
+	if not is_instance_valid(character) or not status:
+		return {"success": false, "error": "无效的角色或状态"}
+	
+	var results = {"success": true, "effects_processed": []}
+	
+	# 创建一个虚拟技能数据作为占位符
+	var dummy_skill = SkillData.new()
+	dummy_skill.skill_name = "Status_%s_Effect" % status.status_name
+	
+	# 处理每个效果
+	for effect in effect_list:
+		if not effect:
+			continue
+		
+		# 使用源角色和目标角色处理效果
+		var source = status.source_character if is_instance_valid(status.source_character) else character
+		var effect_result = await _apply_single_effect(source, character, effect, dummy_skill)
+		
+		results.effects_processed.append({
+			"effect_type": effect.effect_type,
+			"result": effect_result
+		})
+	
+	return results
+
+## 处理状态的持续效果
+## [param context] 技能执行上下文
+## [param status] 状态数据
+## [param character] 拥有状态的角色
+## [return] 效果处理结果
+func process_status_ongoing_effects(status: SkillStatusData, character: Character) -> Dictionary:
+	return await _process_status_effects(status.ongoing_effects, status, character)
+
+## 处理状态的结束效果
+## [param context] 技能执行上下文
+## [param status] 状态数据
+## [param character] 拥有状态的角色
+## [return] 效果处理结果
+func process_status_end_effects(status: SkillStatusData, character: Character) -> Dictionary:
+	return await _process_status_effects(status.end_effects, status, character)

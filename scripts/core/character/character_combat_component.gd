@@ -223,9 +223,9 @@ func on_turn_start() -> void:
 
 ## 在回合结束时调用
 func on_turn_end() -> void:
-	# 更新状态持续时间
+	# 处理状态效果并更新持续时间
 	if _skill_component:
-		_skill_component.update_status_durations()
+		await _skill_component.process_status_effects()
 	
 	# 可以在这里添加其他回合结束时的逻辑
 

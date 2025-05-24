@@ -102,6 +102,28 @@ func restore_hp(amount: float, source: Variant = null) -> float:
 #endregion
 
 #region --- 技能管理 ---
+## 尝试执行技能
+## [param context] 技能执行上下文
+## [param caster] 施法者
+## [param skill_data] 技能数据
+## [param selected_targets] 选中的目标
+## [return] 执行结果
+func attempt_execute_skill(caster: Character, skill_data: SkillData, selected_targets: Array[Character], context: SkillSystem.SkillExecutionContext) -> Dictionary:
+	# 调用SkillSystem的相应方法
+	var success = SkillSystem.attempt_execute_skill(context, caster, skill_data, selected_targets)
+	
+	# 构建结果字典
+	var result = {
+		"success": success,
+		"skill": skill_data,
+		"targets": selected_targets
+	}
+	
+	# 如果成功，等待一帧以确保效果处理开始
+	if success and Engine.get_main_loop():
+		await Engine.get_main_loop().process_frame
+	
+	return result
 
 ## 是否有足够的MP释放技能
 func has_enough_mp_for_any_skill() -> bool:
@@ -206,13 +228,17 @@ func remove_status(status_id: StringName, trigger_end_effects: bool = true) -> b
 	# 移除属性修饰符
 	_apply_attribute_modifiers_for_status(runtime_status_instance, false)
 	
-	# 从活跃状态字典中移除
-	_active_statuses.erase(status_id)
-	
 	# 触发结束效果
 	if trigger_end_effects and not runtime_status_instance.end_effects.is_empty():
-		# TODO: 处理结束效果
-		pass
+		print_rich("[color=cyan]处理 %s 的状态 %s 的结束效果[/color]" % [owner.character_name, runtime_status_instance.status_name])
+		
+		# 处理结束效果
+		var result = await SkillSystem.process_status_end_effects(runtime_status_instance, owner)
+		if not result.success:
+			push_warning("Failed to process end effects for status %s: %s" % [runtime_status_instance.status_name, result.get("error", "unknown error")])
+	
+	# 从活跃状态字典中移除
+	_active_statuses.erase(status_id)
 	
 	# 发出状态移除信号
 	status_removed.emit(status_id, runtime_status_instance)
@@ -221,15 +247,22 @@ func remove_status(status_id: StringName, trigger_end_effects: bool = true) -> b
 	
 	return true
 
-## 更新状态持续时间（通常在回合结束时调用）
-func update_status_durations() -> void:
+## 处理状态效果并更新持续时间（在回合结束时调用）
+func process_status_effects() -> void:
 	var expired_status_ids: Array[StringName] = []
 	
-	# 更新所有状态的持续时间
+	# 处理所有状态
 	for status_id in _active_statuses:
-		var status = _active_statuses[status_id]
+		var status : SkillStatusData = _active_statuses[status_id]
 		
-		# 如果状态是永久的，跳过
+		# 处理持续效果
+		if not status.ongoing_effects.is_empty():
+			print_rich("[color=cyan]处理 %s 的状态 %s 的持续效果[/color]" % [owner.character_name, status.status_name])
+			var result = await SkillSystem.process_status_ongoing_effects(status, owner)
+			if not result.success:
+				push_warning("Failed to process ongoing effects for status %s: %s" % [status.status_name, result.get("error", "unknown error")])
+		
+		# 如果状态是永久的，跳过持续时间更新
 		if status.is_permanent:
 			continue
 		
@@ -240,11 +273,14 @@ func update_status_durations() -> void:
 		if status.remaining_duration <= 0:
 			expired_status_ids.append(status_id)
 		else:
-			print("%s 的状态 %s 剩余持续时间: %d" % [owner.to_string(), status.status_name, status.remaining_duration])
+			print_rich("[color=yellow]%s 的状态 %s 剩余持续时间: %d[/color]" % [owner.character_name, status.status_name, status.remaining_duration])
 	
-	# 移除过期的状态
+	# 处理过期的状态
 	for status_id in expired_status_ids:
-		print("%s 的状态 %s 已过期" % [owner.to_string(), _active_statuses[status_id].status_name])
+		var status = _active_statuses[status_id]
+		print_rich("[color=orange]%s 的状态 %s 已过期[/color]" % [owner.character_name, status.status_name])
+		
+		# 移除状态 (结束效果在remove_status中处理)
 		remove_status(status_id)
 
 ## 获取状态实例
@@ -334,30 +370,30 @@ func _update_existing_status(
 	var status_id: StringName = status_template.status_id
 	var runtime_status_instance: SkillStatusData = _active_statuses[status_id]
 	var old_stacks: int = runtime_status_instance.stacks
-	var old_duration: int = runtime_status_instance.left_duration
+	var old_duration: int = runtime_status_instance.remaining_duration
 	
-	runtime_status_instance.source_char = p_source_char
+	runtime_status_instance.source_character = p_source_char
 	var new_duration_base = duration_override if duration_override > -1 else status_template.duration
 	var new_stack_count = runtime_status_instance.stacks
 
 	# 根据不同的堆叠行为处理状态
 	match status_template.stack_behavior:
 		SkillStatusData.StackBehavior.NO_STACK:
-			runtime_status_instance.left_duration = new_duration_base
+			runtime_status_instance.remaining_duration = new_duration_base
 			result_info.reason = "no_stack_refreshed"
 		SkillStatusData.StackBehavior.REFRESH_DURATION:
-			runtime_status_instance.left_duration = new_duration_base
+			runtime_status_instance.remaining_duration = new_duration_base
 			result_info.reason = "duration_refreshed"
 		SkillStatusData.StackBehavior.ADD_DURATION:
-			runtime_status_instance.left_duration += new_duration_base
+			runtime_status_instance.remaining_duration += new_duration_base
 			result_info.reason = "duration_added"
 		SkillStatusData.StackBehavior.ADD_STACKS_REFRESH_DURATION:
 			new_stack_count = min(old_stacks + stacks_to_apply, status_template.max_stacks)
-			runtime_status_instance.left_duration = new_duration_base
+			runtime_status_instance.remaining_duration = new_duration_base
 			result_info.reason = "stacked_duration_refreshed"
 		SkillStatusData.StackBehavior.ADD_STACKS_INDEPENDENT_DURATION:
 			new_stack_count = min(old_stacks + stacks_to_apply, status_template.max_stacks)
-			runtime_status_instance.left_duration = max(runtime_status_instance.left_duration, new_duration_base)
+			runtime_status_instance.remaining_duration = max(runtime_status_instance.remaining_duration, new_duration_base)
 			result_info.reason = "stacked_independent_simplified"
 	
 	# 如果层数变化，需要重新应用属性修改器
@@ -369,7 +405,7 @@ func _update_existing_status(
 	result_info.applied_successfully = true
 	
 	# 如果状态有变化，发出信号
-	if old_stacks != runtime_status_instance.stacks or old_duration != runtime_status_instance.left_duration:
+	if old_stacks != runtime_status_instance.stacks or old_duration != runtime_status_instance.remaining_duration:
 		status_updated.emit(runtime_status_instance, old_stacks, old_duration)
 	
 	return runtime_status_instance
