@@ -310,14 +310,10 @@ func _apply_attribute_modifiers_for_status(runtime_status_inst: SkillStatusData,
 	
 	for modifier_template: SkillAttributeModifier in runtime_status_inst.attribute_modifiers:
 		# 创建运行时修饰符实例
-		var runtime_modifier = modifier_template.duplicate()
-		
-		# 设置源和层数
-		runtime_modifier.source = runtime_status_inst
-		
-		# 如果修饰符受层数影响，调整数值
-		if runtime_modifier.affected_by_stacks and runtime_status_inst.stacks > 0:
-			runtime_modifier.value *= runtime_status_inst.stacks
+		var runtime_modifier : SkillAttributeModifier = modifier_template.duplicate()
+		# TODO 是否受层数影响
+		if runtime_status_inst.stacks > 0:
+			runtime_modifier.magnitude *= runtime_status_inst.stacks
 		
 		# 应用或移除修饰符
 		if add:
