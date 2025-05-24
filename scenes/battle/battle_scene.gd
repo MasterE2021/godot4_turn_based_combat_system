@@ -99,7 +99,7 @@ func _on_action_menu_attack_pressed() -> void:
 		var valid_targets = battle_manager.get_valid_enemy_targets(caster)
 		if !valid_targets.is_empty():
 			var target = valid_targets[0] # 这里简化为直接选择第一个敌人
-			battle_manager.player_select_action("attack", target)
+			battle_manager.player_select_action("attack", {"target": target})
 		else:
 			update_battle_info("没有可攻击的目标！")
 
@@ -118,7 +118,8 @@ func _on_item_button_pressed() -> void:
 ## 处理技能选择
 func _on_skill_selected(skill: SkillData) -> void:
 	current_selected_skill = skill
-	
+
+	var caster : Character = battle_manager.turn_order_manager.current_character
 	# 根据技能目标类型决定下一步操作
 	match skill.target_type:
 		SkillData.TargetType.SELF, \
@@ -126,11 +127,11 @@ func _on_skill_selected(skill: SkillData) -> void:
 		SkillData.TargetType.ALLY_ALL, \
 		SkillData.TargetType.ALLY_ALL_INC_SELF:
 			# 自动目标技能，直接执行
-			battle_manager.execute_skill(battle_manager.current_turn_character, skill)
+			var params = {"skill": skill, "targets": []}
+			battle_manager.player_select_action("skill", params)
 			
 		SkillData.TargetType.ENEMY_SINGLE:
 			# 显示敌人目标选择菜单
-			var caster : Character = battle_manager.turn_order_manager.current_turn_character
 			var valid_targets := battle_manager.get_valid_enemy_targets(caster)
 			if not valid_targets.is_empty():
 				target_selection_menu.show_targets(valid_targets)
@@ -140,7 +141,7 @@ func _on_skill_selected(skill: SkillData) -> void:
 		
 		SkillData.TargetType.ALLY_SINGLE:
 			# 显示我方(不含自己)目标选择菜单
-			var valid_targets = battle_manager.get_valid_ally_targets(battle_manager.current_turn_character, false)
+			var valid_targets = battle_manager.get_valid_ally_targets(caster, false)
 			if !valid_targets.is_empty():
 				target_selection_menu.show_targets(valid_targets)
 			else:
@@ -149,7 +150,7 @@ func _on_skill_selected(skill: SkillData) -> void:
 		
 		SkillData.TargetType.ALLY_SINGLE_INC_SELF:  # 处理包含自己的单体友方目标选择
 			# 显示我方(含自己)目标选择菜单
-			var valid_targets = battle_manager.get_valid_ally_targets(battle_manager.current_turn_character, true)
+			var valid_targets = battle_manager.get_valid_ally_targets(caster, true)
 			if !valid_targets.is_empty():
 				target_selection_menu.show_targets(valid_targets)
 			else:
@@ -175,11 +176,9 @@ func _on_target_selected(target: Character) -> void:
 		return
 	
 	# 覆盖技能的默认目标逻辑，强制使用玩家选择的目标
-	battle_manager.execute_skill(
-		battle_manager.current_turn_character, 
-		current_selected_skill,
-		[target]
-	)
+	var targets : Array[Character] = [target]
+	var params = {"skill": current_selected_skill, "targets": targets}
+	battle_manager.player_select_action("skill", params)
 
 # 当玩家取消目标选择时调用
 func _on_target_selection_cancelled() -> void:
@@ -214,10 +213,10 @@ func _show_action_menu() -> void:
 func _open_skill_menu() -> void:
 	_hide_all_menus()
 	
-	if skill_select_menu and battle_manager.current_turn_character:
-		var character = battle_manager.current_turn_character
-		if character and character.character_data and character.character_data.skills:
-			skill_select_menu.show_menu(character.character_data.skills, character)
+	var current_character : Character = battle_manager.turn_order_manager.current_character
+	if skill_select_menu and current_character:
+		if current_character and current_character.character_data:
+			skill_select_menu.show_menu(current_character.character_data.skills, current_character)
 		else:
 			update_battle_info("该角色没有技能")
 			_show_action_menu()

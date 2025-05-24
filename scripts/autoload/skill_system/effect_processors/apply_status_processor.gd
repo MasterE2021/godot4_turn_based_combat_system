@@ -27,8 +27,9 @@ func process_effect(effect_data: SkillEffectData, source: Character, target: Cha
 	var applied_by_chance = roll <= chance
 	
 	if applied_by_chance:
+		var target_skill_component : CharacterSkillComponent = target.skill_component
 		# 将 effect_data 传递给 Character 的方法，以便获取 duration_override 和 stacks_to_apply
-		var application_result: Dictionary = await target.apply_skill_status(status_template_to_apply, source, effect_data)
+		var application_result: Dictionary = await target_skill_component.apply_status(status_template_to_apply, source, effect_data)
 		
 		results["success"] = application_result.get("applied_successfully", false)
 		results["reason"] = application_result.get("reason", "char_apply_failed") # 从Character方法获取原因

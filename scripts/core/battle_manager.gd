@@ -63,25 +63,39 @@ func execute_action(action_type: CharacterCombatComponent.ActionType, source: Ch
 	
 	return result
 
-## 执行攻击
-## [param attacker] 攻击者
-## [param target] 目标
-## [return] 攻击结果
-func execute_attack(attacker: Character, target: Character) -> Dictionary:
-	return await execute_action(CharacterCombatComponent.ActionType.ATTACK, attacker, target)
+## 执行基本攻击行动
+func _execute_attack(attacker: Character, target: Character) -> Dictionary:
+	if not is_instance_valid(attacker) or not is_instance_valid(target):
+		return {"success": false, "error": "无效的攻击者或目标"}
+	
+	# 使用战斗组件执行攻击
+	var result = await attacker.combat_component.execute_action(
+		CharacterCombatComponent.ActionType.ATTACK, 
+		attacker, 
+		target
+	)
+	
+	return result
 
-## 执行防御
-## [param character] 防御的角色
-## [return] 防御结果
-func execute_defend(character: Character) -> Dictionary:
-	return await execute_action(CharacterCombatComponent.ActionType.DEFEND, character)
+## 执行防御行动
+func _execute_defend(character: Character) -> Dictionary:
+	if not is_instance_valid(character):
+		return {"success": false, "error": "无效的角色"}
+	
+	# 使用战斗组件执行防御
+	var result = await character.combat_component.execute_action(
+		CharacterCombatComponent.ActionType.DEFEND, 
+		character
+	)
+	
+	return result
 
 ## 执行技能
 ## [param caster] 施法者
 ## [param skill] 技能数据
 ## [param targets] 目标列表
 ## [return] 技能执行结果
-func execute_skill(caster: Character, skill: SkillData, targets: Array = []) -> Dictionary:
+func _execute_skill(caster: Character, skill: SkillData, targets: Array[Character] = []) -> Dictionary:
 	var skill_context = SkillSystem.SkillExecutionContext.new(
 		character_registry,
 		visual_effects,
@@ -100,7 +114,7 @@ func execute_skill(caster: Character, skill: SkillData, targets: Array = []) -> 
 ## [param item] 道具数据
 ## [param targets] 目标列表
 ## [return] 道具使用结果
-func execute_item(user: Character, item, targets: Array) -> Dictionary:
+func _execute_item(user: Character, item, targets: Array) -> Dictionary:
 	var params = {
 		"item": item,
 		"targets": targets
@@ -139,31 +153,39 @@ func _init_core_systems() -> void:
 	combat_rules.initialize(character_registry)
 
 # 玩家选择行动 - 由BattleScene调用
-func player_select_action(action_type: String, target = null):
+func player_select_action(action_type: String, params: Dictionary = {}) -> void:
 	if not state_manager.is_in_state(BattleStateManager.BattleState.PLAYER_TURN):
 		return
 		
-	print("玩家选择行动: ", action_type)
+	print_rich("[color=cyan]玩家选择行动: %s[/color]" % action_type)
 	
 	# 设置为行动执行状态
 	state_manager.change_state(BattleStateManager.BattleState.ACTION_EXECUTION)
 	
 	# 获取当前回合角色
-	var current_turn_character = turn_order_manager.current_character
+	var current_character = turn_order_manager.current_character
 	
 	# 执行选择的行动
 	match action_type:
 		"attack":
-			if target and target is Character:
-				await execute_attack(current_turn_character, target)
+			if params and params.has("target") and params.target is Character:
+				await _execute_attack(current_character, params.target)
 			else:
-				print("错误：攻击需要选择有效目标")
+				print_rich("[color=red]错误：攻击需要选择有效目标[/color]")
 				state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN) # 返回选择状态
 				return
 		"defend":
-			await execute_defend(current_turn_character)
+			await _execute_defend(current_character)
+		"skill":
+			if params and params.has("skill") and params.skill is SkillData:
+				var targets = params.get("targets", [] as Array[Character])
+				await _execute_skill(current_character, params.skill, targets)
+			else:
+				print_rich("[color=red]错误：释放技能需要指定有效的技能数据[/color]")
+				state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
+				return
 		_:
-			print("未知行动类型: ", action_type)
+			print_rich("[color=red]未知行动类型: %s[/color]" % action_type)
 			state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
 			return
 	
@@ -204,6 +226,11 @@ func _on_battle_state_changed(old_state, new_state):
 			print("回合结束...")
 			# 处理回合结束效果
 			await get_tree().create_timer(0.5).timeout
+			
+			# 调用当前角色的回合结束方法，更新状态效果持续时间
+			_update_current_character_turn_end()
+			
+			# 检查战斗是否结束
 			var is_battle_ended = combat_rules.check_battle_end_conditions()
 			if is_battle_ended:
 				state_manager.change_state(BattleStateManager.BattleState.VICTORY if character_registry.is_team_defeated(false) else BattleStateManager.BattleState.DEFEAT)
@@ -301,26 +328,36 @@ func _next_turn() -> void:
 
 # 执行敌人AI
 func _execute_enemy_ai() -> void:
-	var current_turn_character = turn_order_manager.current_character
-	if not state_manager.is_in_state(BattleStateManager.BattleState.ENEMY_TURN) or current_turn_character == null:
-		push_error("敌人回合：当前不是敌人回合或没有可行动的角色")
+	var enemy_character = turn_order_manager.current_character
+	if not enemy_character or character_registry.is_player_character(enemy_character):
+		push_error("Invalid enemy character for AI execution")
 		return
-		
-	# 简单的AI逻辑：总是攻击第一个存活的玩家角色
-	var target = null
-	for player in character_registry.get_player_team(true):
-		target = player
-		break
-
-	var damage := 0	
-	if target:
-		state_manager.change_state(BattleStateManager.BattleState.ACTION_EXECUTION)
-		print(current_turn_character.character_name, " 选择攻击 ", target.character_name)
-		var result := await execute_action(CharacterCombatComponent.ActionType.ATTACK, current_turn_character, target)
-		damage = result.get("damage")
+	
+	# 简单AI：随机选择一个玩家角色攻击
+	var valid_targets = get_valid_enemy_targets(enemy_character)
+	if valid_targets.is_empty():
+		print("敌人没有有效目标，跳过行动")
 		state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
-	else:
-		print("敌人找不到可攻击的目标")
-		state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
+		return
+	
+	# 随机选择一个目标
+	var target = valid_targets[randi() % valid_targets.size()]
+	
+	# 执行基本攻击
+	state_manager.change_state(BattleStateManager.BattleState.ACTION_EXECUTION)
+	var result = await execute_action(CharacterCombatComponent.ActionType.ATTACK, enemy_character, target)
+	var damage = result.get("damage", 0)
+	
+	# 发送敌人行动执行信号
+	enemy_action_executed.emit(enemy_character, target, damage)
+	
+	# 等待一段时间后结束回合
+	await get_tree().create_timer(1.0).timeout
+	state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
 
-	enemy_action_executed.emit(turn_order_manager.current_character, target, damage)
+## 更新当前角色的回合结束状态
+func _update_current_character_turn_end() -> void:
+	var current_character = turn_order_manager.current_character
+	if is_instance_valid(current_character) and current_character.combat_component:
+		print_rich("[color=yellow]更新角色 %s 的状态持续时间[/color]" % current_character.character_name)
+		current_character.combat_component.on_turn_end()

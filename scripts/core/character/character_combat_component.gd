@@ -53,7 +53,7 @@ func initialize() -> void:
 ## [param target] 动作目标
 ## [param params] 额外参数（如技能数据、道具数据等）
 ## [return] 动作执行结果
-func execute_action(action_type: ActionType, source: Character, target = null, params = null) -> Dictionary:
+func execute_action(action_type: ActionType, source: Character, target : Character = null, params = null) -> Dictionary:
 	var result = {}
 	
 	match action_type:
@@ -135,7 +135,7 @@ func _execute_defend(character: Character) -> Dictionary:
 ## [param targets] 目标列表
 ## [param skill_context] 技能执行上下文
 ## [return] 技能执行结果
-func _execute_skill(caster: Character, skill: SkillData, targets: Array, skill_context = null) -> Dictionary:
+func _execute_skill(caster: Character, skill: SkillData, targets: Array[Character], skill_context = null) -> Dictionary:
 	if not is_instance_valid(caster) or not skill:
 		return {"success": false, "error": "无效的施法者或技能"}
 	
@@ -146,7 +146,7 @@ func _execute_skill(caster: Character, skill: SkillData, targets: Array, skill_c
 		return {"success": false, "error": "魔法值不足"}
 	
 	# 尝试执行技能
-	var result = await SkillSystem.attempt_execute_skill(skill_context,caster, skill, targets)
+	var result = await _skill_component.attempt_execute_skill(caster, skill, targets, skill_context)
 	
 	# 发出技能执行信号
 	skill_executed.emit(caster, skill, targets, result)
@@ -215,6 +215,19 @@ func heal(amount: float, source: Variant = null) -> float:
 ## 回合开始时重置标记
 func reset_turn_flags() -> void:
 	set_defending(false)
+
+## 在回合开始时调用
+func on_turn_start() -> void:
+	# 可以在这里添加回合开始时的逻辑
+	pass
+
+## 在回合结束时调用
+func on_turn_end() -> void:
+	# 更新状态持续时间
+	if _skill_component:
+		_skill_component.update_status_durations()
+	
+	# 可以在这里添加其他回合结束时的逻辑
 
 ## 死亡处理方法
 func _die(death_source: Variant = null):
