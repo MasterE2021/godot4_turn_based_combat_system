@@ -204,7 +204,11 @@ func _on_battle_state_changed(old_state, new_state):
 			print("回合结束...")
 			# 处理回合结束效果
 			await get_tree().create_timer(0.5).timeout
-			combat_rules.check_battle_end_conditions()
+			var is_battle_ended = combat_rules.check_battle_end_conditions()
+			if is_battle_ended:
+				state_manager.change_state(BattleStateManager.BattleState.VICTORY if character_registry.is_team_defeated(false) else BattleStateManager.BattleState.DEFEAT)
+			else:
+				state_manager.change_state(BattleStateManager.BattleState.ROUND_START)
 			
 		BattleStateManager.BattleState.VICTORY:
 			print("胜利!")

@@ -89,19 +89,4 @@ func _on_exit_state(state: BattleState) -> void:
 ## 进入指定状态
 ## [param state] 要进入的状态
 func _on_enter_state(state: BattleState) -> void:
-	match state:
-		BattleState.BATTLE_START:
-			print("战斗开始！")
-		BattleState.ROUND_START:
-			print("新回合开始")
-		BattleState.PLAYER_TURN:
-			print("玩家回合开始")
-		BattleState.ENEMY_TURN:
-			print("敌人回合开始")
-		BattleState.VICTORY:
-			print("战斗胜利！")
-		BattleState.DEFEAT:
-			print("战斗失败...")
-		BattleState.ACTION_EXECUTION:
-			print("执行行动中...")
-		# 其他状态...
+	print_rich("[color=blue][b]进入状态: %s[/b][/color]" % get_state_name(state))

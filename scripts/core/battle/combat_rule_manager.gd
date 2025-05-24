@@ -43,7 +43,7 @@ func on_turn_started(turn_number: int) -> void:
 	# 这里可以添加每回合开始时触发的特殊规则或环境效果
 	# e.g., apply_global_battlefield_effect()
 
-## 用于检查胜负条件
+## 用于检查战斗是否结束
 ## [return] 是否战斗已结束
 func check_battle_end_conditions() -> bool: # 返回true如果战斗已结束
 	if not character_registry:
