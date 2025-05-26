@@ -7,6 +7,7 @@
 [sub_resource type="Resource" id="Resource_s313m"]
 script = ExtResource("1_wb8wf")
 effect_type = 0
+element = 1
 visual_effect = ""
 sound_effect = ""
 damage_amount = 10
@@ -27,6 +28,7 @@ metadata/_custom_type_script = "uid://dxb4kwdmaswyl"
 [sub_resource type="Resource" id="Resource_c6ojy"]
 script = ExtResource("1_wb8wf")
 effect_type = 2
+element = 0
 visual_effect = ""
 sound_effect = ""
 damage_amount = 10

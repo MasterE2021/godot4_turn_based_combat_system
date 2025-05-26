@@ -212,7 +212,20 @@ func _on_visual_effect_requested(effect_type: StringName, target: Node, params: 
 	# 根据效果类型调用相应的视觉效果方法
 	match effect_type:
 		&"damage":
-			visual_effects.show_damage_number(target, params.get("amount", 0), false)
+			visual_effects.show_normal_damage(target, params)
+		&"effective_hit":
+			visual_effects.show_effective_hit(target, params)
+		&"ineffective_hit":
+			visual_effects.show_ineffective_hit(target, params)
+		&"damage_number":
+			visual_effects.show_damage_number(
+				target, 
+				params.get("damage", 0), 
+				false, 
+				params.get("color", Color.RED), 
+				params.get("prefix", ""),
+				Vector2(0, 50) # 默认偏移
+			)
 		&"heal":
 			visual_effects.show_heal_number(target, params.get("amount", 0))
 		&"status":

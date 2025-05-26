@@ -16,6 +16,10 @@ enum ActionType {
 @export var _skill_component : CharacterSkillComponent
 ## 防御状态伤害减免系数
 @export var defense_damage_reduction: float = 0.5
+# 添加元素属性
+@export_enum("none", "fire", "water", "earth", "light")
+var element: int = 0 # ElementTypes.Element.NONE
+
 ## 防御状态标记
 var is_defending: bool = false:
 	set(value):
@@ -37,7 +41,7 @@ signal skill_executed(caster, skill, targets, results)
 signal item_used(user, item, targets, results)
 
 ## 初始化组件
-func initialize() -> void:
+func initialize(p_element: int) -> void:
 	# 这里可以进行任何战斗组件特定的初始化
 	if not _skill_component:
 		_skill_component = get_parent().skill_component
@@ -46,6 +50,7 @@ func initialize() -> void:
 		return
 	
 	_skill_component.attribute_current_value_changed.connect(_on_attribute_current_value_changed)
+	element = p_element
 
 ## 执行动作
 ## [param action_type] 动作类型

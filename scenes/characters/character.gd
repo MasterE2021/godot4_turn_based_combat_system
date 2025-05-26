@@ -55,6 +55,8 @@ var is_defending: bool:
 	set(value): if combat_component: combat_component.set_defending(value)
 var is_alive : bool = true:							## 生存状态标记
 	get: return current_hp > 0
+var element: int:
+	get : return combat_component.element
 
 # 信号 - 这些信号将转发组件的信号
 signal character_defeated
@@ -76,8 +78,6 @@ func _ready() -> void:
 	
 	# 初始化角色动画
 	_setup_animations()
-	# 初始化组件
-	_init_components()
 
 	# 初始化UI显示
 	_update_name_display()
@@ -95,6 +95,8 @@ func _init_components() -> void:
 		push_error("技能组件未初始化！")
 		return
 	
+	combat_component.initialize(character_data.element)
+
 	# 连接组件信号
 	combat_component.defending_changed.connect(_on_defending_changed)
 	combat_component.character_defeated.connect(_on_character_defeated)
@@ -118,6 +120,9 @@ func _initialize_from_data(data: CharacterData):
 	
 	skill_component.initialize(character_data.attribute_set_resource, character_data.skills)
 	print(character_name + " 初始化完毕，HP: " + str(current_hp) + "/" + str(max_hp))
+	
+	# 初始化组件
+	_init_components()
 
 ## 设置防御状态
 func set_defending(value: bool) -> void:

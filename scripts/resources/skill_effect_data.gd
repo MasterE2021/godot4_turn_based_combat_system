@@ -12,6 +12,9 @@ enum EffectType {
 
 # 基本属性
 @export var effect_type: EffectType = EffectType.DAMAGE
+## 元素属性
+@export_enum("none", "fire", "water", "earth", "light")
+var element: int = 0 # ElementTypes.Element.NONE 
 @export var visual_effect: String = ""  		## 视觉效果标识符
 @export var sound_effect: String = ""   		## 音效标识符
 

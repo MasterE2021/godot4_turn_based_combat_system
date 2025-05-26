@@ -97,10 +97,16 @@ func setup(
 
 
 ## 显示伤害数字
-func show_damage(amount: float, is_critical: bool = false) -> void:
-	var text = str(roundi(amount))
+## [param amount] 伤害数值
+## [param is_critical] 是否暴击
+## [param custom_color] 自定义颜色，如果为null则使用默认颜色
+## [param prefix] 前缀文本，例如"克制!"
+func show_damage(amount: float, is_critical: bool = false, custom_color: Color = Color.RED, prefix: String = "") -> void:
+	var text = prefix + str(roundi(amount))
 	var type = TextType.CRITICAL if is_critical else TextType.DAMAGE
-	var color = Color(1.0, 0.5, 0.0) if is_critical else Color(1.0, 0.3, 0.3)
+	
+	# 使用自定义颜色或默认颜色
+	var color = Color(1.0, 0.5, 0.0) if is_critical else custom_color
 	setup(text, color, type)
 
 ## 显示治疗数字
