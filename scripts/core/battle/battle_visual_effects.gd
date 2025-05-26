@@ -17,15 +17,19 @@ func initialize(damage_number_scene: PackedScene = null) -> void:
 ## [param target_character] 受到伤害的角色
 ## [param damage_amount] 伤害数值
 ## [param is_critical] 是否暴击
-## [param damage_type] 伤害类型 (例如 "物理", "火焰") - 可选，用于显示不同颜色的数字或图标
+## [param color] 伤害数字颜色
+## [param prefix] 伤害数字前缀
+## [param offset] 位置偏移
 func show_damage_number(
 		target_character: Character, 
 		damage_amount: float, 
 		is_critical: bool = false,
+		color: Color = Color.RED,
+		prefix: String = "",
 		offset: Vector2 = Vector2(0, 50)
 		) -> void:
 	var damage_num_instance : DamageNumber = _create_damage_number(target_character, offset)
-	damage_num_instance.show_damage(damage_amount, is_critical)
+	damage_num_instance.show_damage(damage_amount, is_critical, color, prefix)
 
 ## 显示治疗数字
 func show_heal_number(
@@ -123,6 +127,46 @@ func play_defend_effect(character: Character) -> void:
 	# 如果有对应动画，播放防御动画
 	if character.has_method("play_animation"):
 		character.play_animation("defend")
+
+# --- 元素克制相关的视觉效果方法 ---
+## 显示元素克制效果（伤害加成）
+func show_effective_hit(target: Character, params: Dictionary = {}) -> void:
+	# 显示伤害数字
+	var damage_amount = params.get("amount", 0)
+	var damage_num_instance : DamageNumber = _create_damage_number(target, Vector2(0, 50))
+	damage_num_instance.show_damage(damage_amount, false, Color(1.0, 0.7, 0.0), "克制! ")
+	
+	# 播放克制特效
+	var tween = create_tween()
+	# 闪烁黄色（表示克制）
+	tween.tween_property(target, "modulate", Color(1.5, 1.2, 0.5), 0.1)
+	tween.tween_property(target, "modulate", Color(1, 1, 1), 0.2)
+
+## 显示元素被克制效果（伤害减免）
+func show_ineffective_hit(target: Character, params: Dictionary = {}) -> void:
+	# 显示伤害数字
+	var damage_amount = params.get("amount", 0)
+	var damage_num_instance : DamageNumber = _create_damage_number(target, Vector2(0, 50))
+	damage_num_instance.show_damage(damage_amount, false, Color(0.5, 0.5, 0.5), "抵抗 ")
+	
+	# 播放抵抗特效
+	var tween = create_tween()
+	# 闪烁灰色（表示抵抗）
+	tween.tween_property(target, "modulate", Color(0.7, 0.7, 0.8), 0.1)
+	tween.tween_property(target, "modulate", Color(1, 1, 1), 0.2)
+	
+
+## 显示普通伤害效果
+func show_normal_damage(target: Character, params: Dictionary = {}) -> void:
+	# 显示伤害数字
+	var damage_amount = params.get("amount", 0)
+	var damage_num_instance : DamageNumber = _create_damage_number(target, Vector2(0, 50))
+	damage_num_instance.show_damage(damage_amount, false, Color.RED, "")
+	
+	# 播放普通命中特效
+	var tween = create_tween()
+	tween.tween_property(target, "modulate", Color(1.3, 0.7, 0.7), 0.1)
+	tween.tween_property(target, "modulate", Color(1, 1, 1), 0.2)
 
 # --- 其他可能的视觉效果方法 ---
 # func show_buff_applied_effect(target: Character, buff_name: String)
