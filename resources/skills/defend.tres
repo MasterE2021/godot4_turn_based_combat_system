@@ -39,5 +39,5 @@ mp_cost = 0
 target_type = 5
 effects = Array[ExtResource("1_ggsii")]([SubResource("Resource_v0cas")])
 action_categories = Array[String](["any_action"])
-cast_animation = &""
+cast_animation = &"defend"
 metadata/_custom_type_script = "uid://dd0peyl7nmqfg"

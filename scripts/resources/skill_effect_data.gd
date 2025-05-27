@@ -85,7 +85,7 @@ func _get_heal_description() -> String:
 
 ## 获取状态效果描述
 func _get_status_description() -> String:
-	var duration = status_to_apply.duration
+	var duration = status_to_apply.base_duration
 	if status_application_chance < 1.0:
 		return "%s目标 %d 回合 (%.1f%%几率)" % [status_to_apply.status_name, duration, status_application_chance * 100]
 	return "%s目标 %d 回合" % [status_to_apply.status_name, duration]

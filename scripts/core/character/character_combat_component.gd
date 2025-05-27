@@ -9,7 +9,8 @@ enum ActionType {
 	ATTACK,    ## 普通攻击
 	DEFEND,    ## 防御
 	SKILL,     ## 使用技能
-	ITEM       ## 使用道具
+	ITEM,      ## 使用道具
+	FLEE       ## 逃跑
 }
 
 ## 依赖skill_component组件
@@ -39,31 +40,43 @@ signal item_used(user, item, targets, results)
 
 ## 初始化组件
 func initialize(p_element: int, p_attack_skill: SkillData, p_defense_skill: SkillData = null) -> void:
-	# 这里可以进行任何战斗组件特定的初始化
-	if not _skill_component:
-		_skill_component = get_parent().skill_component
+	element = p_element
+	attack_skill = p_attack_skill
+	defense_skill = p_defense_skill
+	
+	# 连接技能组件的动作标签变化信号
+	if _skill_component:
+		_skill_component.action_tags_changed.connect(_on_action_tags_changed)
 	if not _skill_component:
 		push_error("无法找到技能组件！")
 		return
 	
 	_skill_component.attribute_current_value_changed.connect(_on_attribute_current_value_changed)
-	element = p_element
-	attack_skill = p_attack_skill
-	_skill_component.add_skill(attack_skill)
-	
-	# 初始化防御技能
-	defense_skill = p_defense_skill
-	if defense_skill:
-		_skill_component.add_skill(defense_skill)
 
 ## 执行动作
 ## [param action_type] 动作类型
-## [param source] 动作执行者
-## [param target] 动作目标
-## [param params] 额外参数（如技能数据、道具数据等）
+## [param target] 目标角色
+## [param params] 动作参数
 ## [return] 动作执行结果
-func execute_action(action_type: ActionType, target : Character = null, params : Dictionary = {}) -> Dictionary:
-	var result = {}
+func execute_action(action_type: ActionType, target: Character = null, params: Dictionary = {}) -> Dictionary:
+	var result = {"success": false, "action_type": action_type}
+	
+	if not _skill_component:
+		result["error"] = "技能组件未初始化"
+		return result
+	
+	# 检查是否可以执行该动作类型
+	if not can_perform_action(action_type):
+		result["error"] = "无法执行该动作类型"
+		return result
+	
+	# 如果是技能动作，还需要检查具体技能是否可用
+	if action_type == ActionType.SKILL and params.has("skill"):
+		if not _skill_component.is_skill_available(params.skill):
+			result["error"] = "无法使用该技能"
+			return result
+	
+	print_rich("[color=green]%s 执行动作: %s[/color]" % [owner.character_name, ActionType.keys()[action_type]])
 	
 	match action_type:
 		ActionType.ATTACK:
@@ -74,9 +87,11 @@ func execute_action(action_type: ActionType, target : Character = null, params :
 			result = await _execute_skill(params.skill, params.targets, params.skill_context)
 		ActionType.ITEM:
 			result = await _execute_item(params.item, params.targets)
+		ActionType.FLEE:
+			result = _execute_flee() # 不需要await
 		_:
-			push_error("未知的动作类型：" + str(action_type))
-			result = {"success": false, "error": "未知的动作类型"}
+			result["error"] = "无效的动作类型"
+			return result
 	
 	# 发出动作执行信号
 	action_executed.emit(action_type, target, result)
@@ -256,19 +271,66 @@ func _execute_item(item, targets: Array) -> Dictionary:
 	
 	return result
 
+## 执行逃跑
+## [return] 逃跑结果
+func _execute_flee() -> Dictionary:
+	var character = get_parent()
+	if not is_instance_valid(character):
+		return {"success": false, "error": "无效的角色引用"}
+	
+	print_rich("[color=blue]%s 选择逃跑[/color]" % [character.character_name])
+	
+	# 这里是逃跑的占位实现
+	# 实际项目中需要根据游戏逻辑实现不同的效果
+	var result = {
+		"success": true,
+		"message": "逃跑成功"
+	}
+	
+	return result
+
 #region --- 信号处理 ---
 ## 属性当前值变化的处理
 func _on_attribute_current_value_changed(
-		attribute_instance: SkillAttribute, _old_value: float, 
-		new_value: float, source: Variant
-	) -> void:
-	# 检查是否是生命值变化
+		attribute_instance: SkillAttribute, 
+		_old_value: float, 
+		new_value: float, 
+		source: Variant) -> void:
+	# 如果生命值变为0，则标记为死亡
 	if attribute_instance.attribute_name == &"CurrentHealth" and new_value <= 0:
 		_die(source)
+
+## 当角色的动作标签变化时调用
+func _on_action_tags_changed(restricted_tags: Array[StringName]) -> void:
+	# 可以在这里添加额外的处理逻辑，例如更新UI
+	print_rich("[color=yellow]%s 的动作限制更新: %s[/color]" % [owner.character_name, restricted_tags])
+	
+	# 可以发出信号通知UI更新
+	# action_restriction_changed.emit(restricted_tags)
+
 #endregion
+
+## 检查是否可以执行该动作类型
+func can_perform_action(action_type: ActionType) -> bool:
+	if not _skill_component:
+		return false
+	
+	# 根据动作类型检查相应的标签限制
+	match action_type:
+		ActionType.ATTACK:
+			return _skill_component.can_perform_action_category(&"attack")
+		ActionType.DEFEND:
+			return _skill_component.can_perform_action_category(&"defend")
+		ActionType.SKILL:
+			return _skill_component.can_perform_action_category(&"any_skill")
+		ActionType.ITEM:
+			return _skill_component.can_perform_action_category(&"item")
+		ActionType.FLEE:
+			return _skill_component.can_perform_action_category(&"flee")
+		_:
+			return false
 
 func _get_configuration_warnings() -> PackedStringArray:
 	if not _skill_component:
 		return ["CharacterCombatComponent: SkillComponent is not set."]
 	return []
-	

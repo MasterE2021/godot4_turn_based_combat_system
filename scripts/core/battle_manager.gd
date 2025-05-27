@@ -271,17 +271,42 @@ func _next_turn() -> void:
 	
 	print(next_character.character_name, " 的回合")
 	
+	# 检查角色是否可以行动（是否被眼晕或其他状态限制）
+	if not _can_character_act(next_character):
+		print_rich("[color=orange]%s 无法行动，自动跳过回合[/color]" % next_character.character_name)
+		# 先更新角色的回合结束状态
+		turn_order_manager.current_character = next_character
+		await _update_current_character_turn_end()
+		# 然后进入下一个角色的回合
+		_next_turn()
+		return
+	
 	# 判断是玩家还是敌人的回合
 	if character_registry.is_player_character(next_character):
 		state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
 	else:
 		state_manager.change_state(BattleStateManager.BattleState.ENEMY_TURN)
 
+## 检查角色是否可以行动
+func _can_character_act(character: Character) -> bool:
+	if not is_instance_valid(character) or not character.combat_component or not character.skill_component:
+		return false
+	
+	# 检查角色是否可以执行任何动作
+	var restricted_tags = character.skill_component.get_restricted_action_tags()
+	return not restricted_tags.has(&"any_action")
+
 # 执行敌人AI
 func _execute_enemy_ai() -> void:
 	var enemy_character = turn_order_manager.current_character
 	if not enemy_character or character_registry.is_player_character(enemy_character):
 		push_error("Invalid enemy character for AI execution")
+		return
+	
+	# 再次检查敌人是否可以行动（可能在进入敌人回合后状态发生变化）
+	if not _can_character_act(enemy_character):
+		print_rich("[color=orange]%s 无法行动，自动跳过回合[/color]" % enemy_character.character_name)
+		state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
 		return
 	
 	# 简单AI：随机选择一个玩家角色攻击
