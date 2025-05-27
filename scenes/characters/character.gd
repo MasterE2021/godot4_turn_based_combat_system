@@ -50,9 +50,6 @@ var character_name : StringName:
 @export var character_data: CharacterData
 
 # 属性委托给战斗组件
-var is_defending: bool:
-	get: return combat_component.is_defending if combat_component else false
-	set(value): if combat_component: combat_component.set_defending(value)
 var is_alive : bool = true:							## 生存状态标记
 	get: return current_hp > 0
 var element: int:
@@ -86,48 +83,10 @@ func _ready() -> void:
 
 	print("%s initialized. HP: %.1f/%.1f, Attack: %.1f" % [character_data.character_name, current_hp, max_hp, attack_power])
 
-## 初始化组件
-func _init_components() -> void:
-	if not combat_component:
-		push_error("战斗组件未初始化！")
-		return
-	if not skill_component:
-		push_error("技能组件未初始化！")
-		return
-	
-	combat_component.initialize(character_data.element)
-
-	# 连接组件信号
-	combat_component.defending_changed.connect(_on_defending_changed)
-	combat_component.character_defeated.connect(_on_character_defeated)
-
-	skill_component.status_applied.connect(func(character, status_instance): 
-		status_applied_to_character.emit(character, status_instance))
-		
-	skill_component.status_removed.connect(func(character, status_id, status_instance): 
-		status_removed_from_character.emit(character, status_id, status_instance))
-		
-	skill_component.status_updated.connect(func(character, status_instance, old_stacks, old_duration): 
-		status_updated_on_character.emit(character, status_instance, old_stacks, old_duration))
-
-	skill_component.attribute_base_value_changed.connect(_on_attribute_base_value_changed)
-	skill_component.attribute_current_value_changed.connect(_on_attribute_current_value_changed)
-
-## 初始化玩家数据
-func _initialize_from_data(data: CharacterData):
-	# 保存数据引用
-	character_data = data
-	
-	skill_component.initialize(character_data.attribute_set_resource, character_data.skills)
-	print(character_name + " 初始化完毕，HP: " + str(current_hp) + "/" + str(max_hp))
-	
-	# 初始化组件
-	_init_components()
-
-## 设置防御状态
-func set_defending(value: bool) -> void:
+func execute_action(action_type: CharacterCombatComponent.ActionType, target : Character = null, params : Dictionary = {}) -> Dictionary:
 	if combat_component:
-		combat_component.set_defending(value)
+		return await combat_component.execute_action(action_type, target, params)
+	return {"success": false, "error": "战斗组件未初始化"}
 
 ## 伤害处理方法
 func take_damage(base_damage: float, source: Variant = null) -> float:
@@ -139,11 +98,6 @@ func heal(amount: float, source: Variant = null) -> float:
 	if combat_component:
 		return combat_component.heal(amount, source)
 	return 0.0
-
-## 回合开始时重置标记
-func reset_turn_flags() -> void:
-	if combat_component:
-		combat_component.reset_turn_flags()
 
 ## 是否足够释放技能MP
 func has_enough_mp_for_any_skill() -> bool:
@@ -243,13 +197,25 @@ func _on_attribute_base_value_changed(attribute_instance: SkillAttribute, _old_v
 	if attribute_instance.attribute_name == &"MaxHealth": # 例如基础MaxHealth变化
 		_update_health_display() # 确保UI同步
 	
-func _on_defending_changed(value: bool):
+## 当状态被应用时调用
+func _on_status_applied(status_instance: SkillStatusData):
 	if not defense_indicator:
 		return
-	if value:
+	
+	# 检查是否是防御状态
+	if status_instance.status_id == &"defend":
 		defense_indicator.show_indicator()
-	else:
+		print_rich("[color=cyan]%s 进入防御状态[/color]" % character_data.character_name)
+
+## 当状态被移除时调用
+func _on_status_removed(status_id: StringName, _status_instance_data_before_removal: SkillStatusData):
+	if not defense_indicator:
+		return
+	
+	# 检查是否是防御状态
+	if status_id == &"defend":
 		defense_indicator.hide_indicator()
+		print_rich("[color=orange]%s 防御状态结束[/color]" % character_data.character_name)
 
 func _on_character_defeated():
 	if defense_indicator:
@@ -258,3 +224,44 @@ func _on_character_defeated():
 	character_defeated.emit()
 
 #endregion
+
+## 初始化组件
+func _init_components() -> void:
+	if not combat_component:
+		push_error("战斗组件未初始化！")
+		return
+	if not skill_component:
+		push_error("技能组件未初始化！")
+		return
+	
+	combat_component.initialize(character_data.element, character_data.attack_skill, character_data.defense_skill)
+	# 连接组件信号
+	combat_component.character_defeated.connect(_on_character_defeated)
+	
+	# 连接状态事件信号
+	skill_component.status_applied.connect(_on_status_applied)
+	skill_component.status_removed.connect(_on_status_removed)
+	
+	# 将状态事件转发给外部监听器
+	skill_component.status_applied.connect(func(status_instance): 
+		status_applied_to_character.emit(self, status_instance))
+		
+	skill_component.status_removed.connect(func(status_id, status_instance): 
+		status_removed_from_character.emit(self, status_id, status_instance))
+		
+	skill_component.status_updated.connect(func(status_instance, old_stacks, old_duration): 
+		status_updated_on_character.emit(self, status_instance, old_stacks, old_duration))
+
+	skill_component.attribute_base_value_changed.connect(_on_attribute_base_value_changed)
+	skill_component.attribute_current_value_changed.connect(_on_attribute_current_value_changed)
+
+## 初始化玩家数据
+func _initialize_from_data(data: CharacterData):
+	# 保存数据引用
+	character_data = data
+	
+	skill_component.initialize(character_data.attribute_set_resource, character_data.skills)
+	print(character_name + " 初始化完毕，HP: " + str(current_hp) + "/" + str(max_hp))
+	
+	# 初始化组件
+	_init_components()

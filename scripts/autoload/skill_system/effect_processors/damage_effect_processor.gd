@@ -10,7 +10,7 @@ func can_process_effect(effect: SkillEffectData) -> bool:
 	return effect.effect_type == effect.EffectType.DAMAGE
 
 ## 处理伤害效果
-func process_effect(effect: SkillEffectData, source: Character, target: Character) -> Dictionary:
+func process_effect(effect: SkillEffectData, source: Character, target: Character, _context: Dictionary = {}) -> Dictionary:
 	var results = {}
 	
 	# 等待短暂时间
@@ -73,14 +73,13 @@ func _get_damage_info(target: Character, damage: int, is_effective: bool, is_ine
 ## 计算伤害
 func _calculate_damage(caster: Character, target: Character, effect: SkillEffectData) -> Dictionary:
 	# 获取基础伤害
-	var power = effect.damage_amount
 	var element = effect.element
 	
 	# 基础伤害计算
-	var base_damage = power + (caster.magic_attack * 0.8)
+	var base_damage = caster.attack_power * effect.damage_power_scale + effect.damage_amount
 	
 	# 考虑目标防御
-	var damage_after_defense = base_damage - (target.magic_defense * 0.5)
+	var damage_after_defense = base_damage - target.defense_power
 	
 	# 元素相克系统
 	var element_result = _calculate_element_modifier(element, target)

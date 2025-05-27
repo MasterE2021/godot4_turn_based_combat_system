@@ -7,7 +7,7 @@ func get_processor_id() -> StringName:
 func can_process_effect(effect_data: SkillEffectData) -> bool:
 	return effect_data.effect_type == SkillEffectData.EffectType.DISPEL
 
-func process_effect(effect_data: SkillEffectData, source: Character, target: Character) -> Dictionary:
+func process_effect(effect_data: SkillEffectData, source: Character, target: Character, _context: Dictionary = {}) -> Dictionary:
 	var results := { "success": false, "dispelled_count": 0, "dispelled_ids": [] }
 
 	if not is_instance_valid(target):

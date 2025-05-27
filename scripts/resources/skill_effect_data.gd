@@ -7,6 +7,7 @@ enum EffectType {
 	HEAL,              		## 治疗
 	STATUS,           		## 控制
 	DISPEL,            		## 驱散
+	MODIFY_DAMAGE,      	## 修改伤害
 	SPECIAL            		## 特殊效果
 }
 
@@ -42,6 +43,13 @@ var element: int = 0 # ElementTypes.Element.NONE
 @export var dispel_is_positive: bool = false  	## 是否驱散正面效果
 @export var dispel_is_all: bool = false        	## 是否全部驱散
 
+## 修改伤害参数
+@export_group("修改伤害参数", "damage_mod_")
+@export var damage_mod_percent: float = 0.5  		## 伤害修改百分比（0.5表示减少一半）
+@export var damage_mod_flat: float = 0.0     		## 伤害修改固定值（在百分比之后再加减）
+@export var damage_mod_min: float = 1.0      		## 修改后的最小伤害值
+@export var damage_mod_max: float = 9999.0   		## 修改后的最大伤害值
+
 ## 特殊效果参数
 @export_group("特殊效果参数", "special_")
 @export var special_type: String = "none"  		## 特殊效果类型
@@ -58,6 +66,8 @@ func get_description() -> String:
 			return _get_status_description()
 		EffectType.DISPEL:
 			return _get_dispel_description()
+		EffectType.MODIFY_DAMAGE:
+			return _get_modify_damage_description()
 		EffectType.SPECIAL:
 			return _get_special_description()
 		_:
@@ -86,6 +96,14 @@ func _get_dispel_description() -> String:
 	var is_positive = dispel_is_positive
 	var type_name = "增益" if is_positive else "减益"
 	return "驱散 %d 个%s效果" % [count, type_name]
+
+## 获取修改伤害描述
+func _get_modify_damage_description() -> String:
+	var percent = damage_mod_percent
+	var flat = damage_mod_flat
+	var _min = damage_mod_min
+	var _max = damage_mod_max
+	return "修改伤害: %s * %s + %s (范围: %s - %s)" % [percent, flat, _min, _max]
 
 ## 获取特殊效果描述
 func _get_special_description() -> String:
