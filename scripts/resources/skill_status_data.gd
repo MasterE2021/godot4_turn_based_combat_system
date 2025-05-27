@@ -35,7 +35,7 @@ enum StatusType {
 @export var icon: Texture2D                     								## UI图标
 
 @export var status_type: StatusType = StatusType.NEUTRAL						## 状态类型
-@export var duration: int = 3                   								## 默认持续回合数 (对TURNS类型有效)
+@export var base_duration: int = 3                   						## 默认持续回合数 (对TURNS类型有效)
 @export var duration_type: DurationType = DurationType.TURNS					## 持续时间类型
 @export var max_stacks: int = 1                 								## 最大叠加层数
 @export var stack_behavior: StackBehavior = StackBehavior.REFRESH_DURATION	## 叠加行为
@@ -47,8 +47,20 @@ enum StatusType {
 @export var end_effects: Array[SkillEffectData] = []							## 结束效果
 
 # 状态间交互
-@export var overrides_states: Array[StringName] = []							## 此状态应用时会移除的目标状态ID列表
+@export var overrides_states: Array[StringName] = []						## 此状态应用时会移除的目标状态ID列表
 @export var resisted_by_states: Array[StringName] = []						## 如果目标拥有这些状态之一，则此状态无法应用
+
+# 触发条件
+@export_group("触发条件", "trigger_")
+## 此状态可以响应的游戏事件类型
+## 例如: [&"on_damage_taken", &"on_turn_start", &"on_attack"]
+@export var trigger_on_events: Array[StringName] = []
+## 触发时执行的效果
+@export var trigger_effects: Array[SkillEffectData] = []
+## 回合触发次数
+@export var trigger_turns: int = 1
+## 触发总数
+@export var trigger_count: int = 1
 
 # 行动限制
 @export_group("行动限制")
@@ -64,18 +76,22 @@ var remaining_duration: int       													## 剩余持续时间
 var stacks: int = 1          													## 当前叠加层数
 var is_permanent: bool: 
 	get: return duration_type == DurationType.INFINITE
+## 本回合触发次数
+var current_turn_trigger_count: int = 0
+## 触发总数
+var current_total_trigger_count: int = 0
 
 #region --- 方法 ---
 func _init(): 
 	source_character = null
 	target_character = null
-	remaining_duration = duration 
+	remaining_duration = base_duration 
 	stacks = 1
 
 func get_full_description() -> String:
 	var desc = "%s: %s\n" % [status_name, description]
 	if duration_type == DurationType.TURNS:
-		desc += "基础持续 %d 回合. " % duration
+		desc += "基础持续 %d 回合. " % base_duration
 	elif duration_type == DurationType.INFINITE:
 		desc += "持续无限 (或直到被驱散). "
 	elif duration_type == DurationType.COMBAT_LONG:
@@ -94,4 +110,12 @@ func is_countered_by(other_status_id: StringName) -> bool:
 
 func overrides_other_status(other_status_id: StringName) -> bool:
 	return overrides_states.has(other_status_id)
+
+## 检查此状态是否可以被指定事件触发
+func can_trigger_on_event(event_type: StringName) -> bool:
+	return trigger_on_events.has(event_type)
+
+## 获取触发效果
+func get_trigger_effects() -> Array[SkillEffectData]:
+	return trigger_effects
 #endregion

@@ -10,7 +10,7 @@ func can_process_effect(effect: SkillEffectData) -> bool:
 	return effect.effect_type == effect.EffectType.HEAL
 
 ## 处理治疗效果
-func process_effect(effect: SkillEffectData, source: Character, target: Character) -> Dictionary:
+func process_effect(effect: SkillEffectData, source: Character, target: Character, _context: Dictionary = {}) -> Dictionary:
 	var results = {}
 	
 	# 等待短暂时间

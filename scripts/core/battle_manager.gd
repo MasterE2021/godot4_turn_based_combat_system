@@ -271,9 +271,6 @@ func _next_turn() -> void:
 	
 	print(next_character.character_name, " 的回合")
 	
-	# 回合开始时重置防御状态
-	next_character.reset_turn_flags()
-	
 	# 判断是玩家还是敌人的回合
 	if character_registry.is_player_character(next_character):
 		state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)

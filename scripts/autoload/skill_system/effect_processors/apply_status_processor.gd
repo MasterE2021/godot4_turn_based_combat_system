@@ -7,7 +7,7 @@ func get_processor_id() -> StringName:
 func can_process_effect(effect_data: SkillEffectData) -> bool:
 	return effect_data.effect_type == SkillEffectData.EffectType.STATUS
 
-func process_effect(effect_data: SkillEffectData, source: Character, target: Character) -> Dictionary:
+func process_effect(effect_data: SkillEffectData, source: Character, target: Character, _context: Dictionary = {}) -> Dictionary:
 	var results := {"success": false, "applied_status_id": null, "reason": "unknown"}
 	
 	var status_template_to_apply: SkillStatusData = effect_data.status_to_apply
@@ -18,9 +18,8 @@ func process_effect(effect_data: SkillEffectData, source: Character, target: Cha
 
 	results["applied_status_id"] = status_template_to_apply.status_id # 记录尝试应用的ID
 
-	# 等待短暂时间
-	if Engine.get_main_loop():
-		await Engine.get_main_loop().process_frame
+	# 注意：这里原来有一个等待帧处理的逻辑，但实际上不需要
+	# 如果将来需要异步处理，可以重新启用
 	
 	var chance = effect_data.status_application_chance # 从 SkillEffectData 获取几率
 	var roll = randf()
@@ -29,7 +28,7 @@ func process_effect(effect_data: SkillEffectData, source: Character, target: Cha
 	if applied_by_chance:
 		var target_skill_component : CharacterSkillComponent = target.skill_component
 		# 将 effect_data 传递给 Character 的方法，以便获取 duration_override 和 stacks_to_apply
-		var application_result: Dictionary = await target_skill_component.apply_status(status_template_to_apply, source, effect_data)
+		var application_result: Dictionary = target_skill_component.apply_status(status_template_to_apply, source, effect_data)
 		
 		results["success"] = application_result.get("applied_successfully", false)
 		results["reason"] = application_result.get("reason", "char_apply_failed") # 从Character方法获取原因

@@ -5,8 +5,12 @@ class_name EffectProcessor
 ## 所有具体效果处理器都应继承此类，并实现相应的方法
 
 ## 处理效果 - 主要接口方法
+## [param effect] 效果数据
+## [param source] 效果来源角色
+## [param target] 目标角色
+## [param context] 执行上下文，包含额外信息
 ## [return] 处理结果的字典
-func process_effect(_effect: SkillEffectData, source: Character, _target: Character) -> Dictionary:
+func process_effect(_effect: SkillEffectData, source: Character, _target: Character, _context: Dictionary = {}) -> Dictionary:
 	# 延迟一帧执行
 	await source.get_tree().process_frame
 	push_error("EffectProcessor.process_effect() 必须被子类重写")

@@ -11,6 +11,7 @@ var element: int = 0 # ElementTypes.Element.NONE
 @export_group("技能列表")
 @export var skills: Array[SkillData] = [] # 存储角色拥有的技能
 @export var attack_skill : SkillData = null
+@export var defense_skill : SkillData = null
 
 @export_group("视觉表现")
 @export var color: Color = Color.BLUE  # 为原型阶段设置的角色颜色

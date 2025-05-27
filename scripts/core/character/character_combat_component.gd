@@ -19,17 +19,13 @@ enum ActionType {
 # 添加元素属性
 @export_enum("none", "fire", "water", "earth", "light")
 var element: int = 0 # ElementTypes.Element.NONE
+## 攻击技能
 var attack_skill : SkillData
-
-## 防御状态标记
-var is_defending: bool = false:
-	set(value):
-		is_defending = value
-		defending_changed.emit(value)
+## 防御技能
+var defense_skill : SkillData
 
 ## 死亡时发出信号
 signal character_defeated()
-signal defending_changed(value: bool)
 ## 动作执行信号
 signal action_executed(action_type, target, result)
 ## 攻击执行信号
@@ -42,7 +38,7 @@ signal skill_executed(skill, targets, results)
 signal item_used(user, item, targets, results)
 
 ## 初始化组件
-func initialize(p_element: int, p_attack_skill: SkillData) -> void:
+func initialize(p_element: int, p_attack_skill: SkillData, p_defense_skill: SkillData = null) -> void:
 	# 这里可以进行任何战斗组件特定的初始化
 	if not _skill_component:
 		_skill_component = get_parent().skill_component
@@ -54,6 +50,11 @@ func initialize(p_element: int, p_attack_skill: SkillData) -> void:
 	element = p_element
 	attack_skill = p_attack_skill
 	_skill_component.add_skill(attack_skill)
+	
+	# 初始化防御技能
+	defense_skill = p_defense_skill
+	if defense_skill:
+		_skill_component.add_skill(defense_skill)
 
 ## 执行动作
 ## [param action_type] 动作类型
@@ -68,7 +69,7 @@ func execute_action(action_type: ActionType, target : Character = null, params :
 		ActionType.ATTACK:
 			result = await _execute_attack(target, params)
 		ActionType.DEFEND:
-			result = await _execute_defend()
+			result = await _execute_defend(params)
 		ActionType.SKILL:
 			result = await _execute_skill(params.skill, params.targets, params.skill_context)
 		ActionType.ITEM:
@@ -88,12 +89,27 @@ func execute_action(action_type: ActionType, target : Character = null, params :
 ## [return] 实际造成的伤害值
 func take_damage(base_damage: float, source: Variant = null) -> float:
 	var final_damage: float = base_damage
-
-	# 如果处于防御状态，则减免伤害
-	if is_defending:
-		final_damage = round(final_damage * defense_damage_reduction)
-		print(owner.to_string() + " 正在防御，伤害减半！")
-		_set_defending(false)  # 防御效果通常在受到一次攻击后解除
+	
+	# 创建伤害信息对象（根据记忆中的DamageInfo结构）
+	var damage_info = {
+		"original_base_damage": base_damage,
+		"current_base_damage": base_damage,
+		"damage_value": base_damage,
+		"source_character": source,
+		"target_character": owner,
+		"can_be_modified": true,
+		"modifications": []
+	}
+	
+	# 触发伤害修改事件，允许状态效果修改伤害值
+	SkillSystem.trigger_game_event(&"on_damage_taken", {
+		"source_character": source,
+		"target_character": owner,
+		"damage_info": damage_info
+	})
+	
+	# 获取可能被修改后的伤害值
+	final_damage = damage_info.damage_value
 
 	if final_damage <= 0:
 		return 0
@@ -103,6 +119,14 @@ func take_damage(base_damage: float, source: Variant = null) -> float:
 	
 	# 消耗生命值
 	_skill_component.consume_hp(final_damage, source)
+	
+	# 触发伤害完成事件
+	SkillSystem.trigger_game_event(&"on_damage_taken_completed", {
+		"source_character": source,
+		"target_character": owner,
+		"original_damage": base_damage,
+		"final_damage": final_damage
+	})
 
 	return final_damage
 
@@ -117,14 +141,16 @@ func heal(amount: float, source: Variant = null) -> float:
 	_skill_component.restore_hp(amount, source)
 	return amount
 
-## 回合开始时重置标记
-func reset_turn_flags() -> void:
-	_set_defending(false)
-
 ## 在回合开始时调用
 func on_turn_start() -> void:
-	# 可以在这里添加回合开始时的逻辑
-	pass
+	# 处理状态更新和触发计数重置
+	if _skill_component:
+		# 重置状态触发计数
+		_skill_component.reset_status_trigger_counts()
+		# 处理回合开始时的状态更新
+		await _skill_component.process_turn_start()
+	
+	# 可以在这里添加其他回合开始时的逻辑
 
 ## 在回合结束时调用
 func on_turn_end() -> void:
@@ -148,12 +174,7 @@ func _execute_attack(target: Character, params : Dictionary) -> Dictionary:
 		return {"success": false, "error": "无效的角色引用"}
 	
 	print_rich("[color=yellow]%s 攻击 %s[/color]" % [attacker.character_name, target.character_name])
-	
-	# 计算伤害
-	var damage := _calculate_damage(attacker, target)
-	
-	# 应用伤害
-	#var actual_damage = target.combat_component.take_damage(damage, attacker)
+
 	var targets : Array[Character] = [target]
 	var result : Dictionary = await _execute_skill(attack_skill, targets, params.skill_context)
 	
@@ -165,24 +186,16 @@ func _execute_attack(target: Character, params : Dictionary) -> Dictionary:
 
 ## 执行防御
 ## [return] 防御结果
-func _execute_defend() -> Dictionary:
+func _execute_defend(params : Dictionary) -> Dictionary:
 	var character = get_parent()
 	if not is_instance_valid(character):
 		return {"success": false, "error": "无效的角色引用"}
 	
 	print_rich("[color=cyan]%s 选择防御[/color]" % [character.character_name])
 	
-	# 播放防御动画
-	await character.play_animation("defend")
-	
-	# 设置防御状态
-	_set_defending(true)
-	
-	# 构建结果
-	var result = {
-		"success": true,
-		"defending": true
-	}
+	# 使用防御技能
+	var targets: Array[Character] = [character] # 目标是自己
+	var result: Dictionary = await _execute_skill(defense_skill, targets, params.skill_context)
 	
 	# 发出防御执行信号
 	defend_executed.emit(character)
@@ -194,7 +207,10 @@ func _execute_defend() -> Dictionary:
 ## [param targets] 目标列表
 ## [param skill_context] 技能执行上下文
 ## [return] 技能执行结果
-func _execute_skill(skill: SkillData, targets: Array[Character], skill_context = null) -> Dictionary:
+func _execute_skill(
+		skill: SkillData, 
+		targets: Array[Character], 
+		skill_context : SkillSystem.SkillExecutionContext = null) -> Dictionary:
 	var caster = get_parent()
 	if not is_instance_valid(caster) or not skill:
 		return {"success": false, "error": "无效的施法者或技能"}
@@ -239,24 +255,6 @@ func _execute_item(item, targets: Array) -> Dictionary:
 	item_used.emit(user, item, targets, result)
 	
 	return result
-
-## 设置防御状态
-func _set_defending(value: bool) -> void:
-	is_defending = value
-
-## 计算伤害
-## [param attacker] 攻击者
-## [param target] 目标
-## [return] 计算后的伤害值
-func _calculate_damage(attacker: Character, target: Character) -> float:
-	# 基础伤害计算
-	var base_damage := attacker.attack_power
-	var final_damage = round(base_damage - target.defense_power)
-	
-	# 确保伤害至少为1
-	final_damage = max(1, final_damage)
-	
-	return final_damage
 
 #region --- 信号处理 ---
 ## 属性当前值变化的处理
