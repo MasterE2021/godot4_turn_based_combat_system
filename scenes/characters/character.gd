@@ -229,8 +229,7 @@ func _init_components() -> void:
 		push_error("技能组件未初始化！")
 		return
 	
-	combat_component.initialize(character_data.element)
-
+	combat_component.initialize(character_data.element, character_data.attack_skill)
 	# 连接组件信号
 	combat_component.defending_changed.connect(_on_defending_changed)
 	combat_component.character_defeated.connect(_on_character_defeated)

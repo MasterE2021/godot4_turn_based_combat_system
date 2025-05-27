@@ -19,6 +19,7 @@ enum ActionType {
 # 添加元素属性
 @export_enum("none", "fire", "water", "earth", "light")
 var element: int = 0 # ElementTypes.Element.NONE
+var attack_skill : SkillData
 
 ## 防御状态标记
 var is_defending: bool = false:
@@ -32,16 +33,16 @@ signal defending_changed(value: bool)
 ## 动作执行信号
 signal action_executed(action_type, target, result)
 ## 攻击执行信号
-signal attack_executed(attacker, target, damage)
+signal attack_executed(target, damage)
 ## 防御执行信号
 signal defend_executed(character)
 ## 技能执行信号
-signal skill_executed(caster, skill, targets, results)
+signal skill_executed(skill, targets, results)
 ## 道具使用信号
 signal item_used(user, item, targets, results)
 
 ## 初始化组件
-func initialize(p_element: int) -> void:
+func initialize(p_element: int, p_attack_skill: SkillData) -> void:
 	# 这里可以进行任何战斗组件特定的初始化
 	if not _skill_component:
 		_skill_component = get_parent().skill_component
@@ -51,6 +52,8 @@ func initialize(p_element: int) -> void:
 	
 	_skill_component.attribute_current_value_changed.connect(_on_attribute_current_value_changed)
 	element = p_element
+	attack_skill = p_attack_skill
+	_skill_component.add_skill(attack_skill)
 
 ## 执行动作
 ## [param action_type] 动作类型
@@ -63,7 +66,7 @@ func execute_action(action_type: ActionType, target : Character = null, params :
 	
 	match action_type:
 		ActionType.ATTACK:
-			result = await _execute_attack(target)
+			result = await _execute_attack(target, params)
 		ActionType.DEFEND:
 			result = await _execute_defend()
 		ActionType.SKILL:
@@ -139,31 +142,24 @@ func _die(death_source: Variant = null):
 ## 执行攻击
 ## [param target] 目标
 ## [return] 攻击结果
-func _execute_attack(target: Character) -> Dictionary:
+func _execute_attack(target: Character, params : Dictionary) -> Dictionary:
 	var attacker = get_parent()
 	if not is_instance_valid(target):
 		return {"success": false, "error": "无效的角色引用"}
 	
 	print_rich("[color=yellow]%s 攻击 %s[/color]" % [attacker.character_name, target.character_name])
 	
-	# 播放攻击动画
-	await attacker.play_animation("attack")
-	
 	# 计算伤害
-	var damage = _calculate_damage(attacker, target)
+	var damage := _calculate_damage(attacker, target)
 	
 	# 应用伤害
-	var actual_damage = target.combat_component.take_damage(damage, attacker)
+	#var actual_damage = target.combat_component.take_damage(damage, attacker)
+	var targets : Array[Character] = [target]
+	var result : Dictionary = await _execute_skill(attack_skill, targets, params.skill_context)
 	
-	# 构建结果
-	var result = {
-		"success": true,
-		"damage": actual_damage,
-		"critical": false  # 可以在这里添加暴击判定
-	}
-	
+	var actual_damage = 0
 	# 发出攻击执行信号
-	attack_executed.emit(attacker, target, actual_damage)
+	attack_executed.emit(target, actual_damage)
 	
 	return result
 
@@ -209,14 +205,11 @@ func _execute_skill(skill: SkillData, targets: Array[Character], skill_context =
 	if not _skill_component.has_enough_mp_for_skill(skill):
 		return {"success": false, "error": "魔法值不足"}
 	
-	# 播放施法动画
-	await caster.play_animation("skill")
-	
 	# 尝试执行技能
-	var result = await _skill_component.attempt_execute_skill(caster, skill, targets, skill_context)
+	var result = await _skill_component.attempt_execute_skill(skill, targets, skill_context)
 	
 	# 发出技能执行信号
-	skill_executed.emit(caster, skill, targets, result)
+	skill_executed.emit(skill, targets, result)
 	
 	return result
 

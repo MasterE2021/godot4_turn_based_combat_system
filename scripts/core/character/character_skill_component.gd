@@ -106,10 +106,12 @@ func restore_hp(amount: float, source: Variant = null) -> float:
 ## [param skill_data] 技能数据
 ## [param selected_targets] 选中的目标
 ## [return] 执行结果
-func attempt_execute_skill(caster: Character, skill_data: SkillData, selected_targets: Array[Character], context: SkillSystem.SkillExecutionContext) -> Dictionary:
+func attempt_execute_skill(skill_data: SkillData, selected_targets: Array[Character], context: SkillSystem.SkillExecutionContext) -> Dictionary:
+	var caster: Character = get_parent() as Character
+	# 播放攻击动画
+	await caster.play_animation(skill_data.cast_animation)
 	# 调用SkillSystem的相应方法
-	var success = SkillSystem.attempt_execute_skill(context, caster, skill_data, selected_targets)
-	
+	var success := SkillSystem.attempt_execute_skill(context, caster, skill_data, selected_targets)
 	# 构建结果字典
 	var result = {
 		"success": success,
