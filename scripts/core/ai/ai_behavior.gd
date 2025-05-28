@@ -82,10 +82,7 @@ func evaluate_skill(character: Character, skill: SkillData, targets: Array) -> f
 	if character.max_mp > 0:
 		mp_percent_cost = skill.mp_cost / float(character.max_mp)
 	score -= mp_percent_cost * 0.5  # 减少高消耗技能的评分
-	
-	# 考虑技能冷却时间
-	score -= skill.cooldown * 0.1  # 冷却时间越长，评分越低
-	
+
 	# 随机因素，增加一些不可预测性
 	score += randf_range(-0.2, 0.2)
 	
@@ -136,13 +133,10 @@ func _get_skill_tags(skill: SkillData) -> Array:
 					var status = effect.status_to_apply
 					# 这里需要根据实际的状态效果系统进行判断
 					# 简单实现：根据状态名称判断
-					var status_name = status.status_name.to_lower()
-					if "buff" in status_name or "boost" in status_name or "increase" in status_name:
+					if status.status_type == SkillStatusData.StatusType.BUFF:
 						tags.append(SkillTag.SUPPORT)
-					elif "debuff" in status_name or "weaken" in status_name or "decrease" in status_name:
+					elif status.status_type == SkillStatusData.StatusType.DEBUFF:
 						tags.append(SkillTag.DEBUFF)
-					elif "protect" in status_name or "shield" in status_name or "defense" in status_name:
-						tags.append(SkillTag.DEFENSIVE)
 			SkillEffectData.EffectType.MODIFY_DAMAGE:
 				tags.append(SkillTag.OFFENSIVE)
 	

@@ -54,7 +54,10 @@ func initialize(p_element: int, p_attack_skill: SkillData, p_defense_skill: Skil
 ## [param target] 目标角色
 ## [param params] 动作参数
 ## [return] 动作执行结果
-func execute_action(action_type: ActionType, target: Character = null, params: Dictionary = {}) -> Dictionary:
+func execute_action(
+		action_type: ActionType, 
+		target: Character = null, 
+		params: Dictionary = {}) -> Dictionary:
 	var result = {"success": false, "action_type": action_type}
 	
 	if not _skill_component:

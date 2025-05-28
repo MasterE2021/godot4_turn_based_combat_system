@@ -64,10 +64,14 @@ func execute_action() -> AIActionResult:
 	if action_decision.action_type == null or action_decision.target == null:
 		return AIActionResult.new(false)
 	
+	action_decision.params.merge({
+		"skill_context": SkillSystem.SkillExecutionContext.new(
+				character_registry, battle_manager.visual_effects
+			)
+	})
 	# 执行决策
-	var result : Dictionary = await battle_manager._execute_action(
+	var result : Dictionary = await owner_character.combat_component.execute_action(
 		action_decision.action_type,
-		owner_character,
 		action_decision.target,
 		action_decision.params
 	)
@@ -108,10 +112,10 @@ func decide_action() -> Dictionary:
 		# 评估每个技能的价值
 		var best_skill = null
 		var best_skill_score = -1.0
-		var best_skill_targets = []
+		var best_skill_targets : Array[Character] = []
 		
 		for skill in available_skills:
-			var skill_targets = get_targets_for_skill(skill, potential_targets)
+			var skill_targets := get_targets_for_skill(skill, potential_targets)
 			if not skill_targets.is_empty():
 				var skill_score = behavior_resource.evaluate_skill(owner_character, skill, skill_targets)
 				if skill_score > best_skill_score:
@@ -158,7 +162,7 @@ func decide_action() -> Dictionary:
 
 # 获取潜在目标
 func get_potential_targets() -> Array:
-	var targets = []
+	var targets : Array[Character]= []
 	var owner_character = get_parent() as Character
 	# 根据技能类型获取不同的目标列表
 	var enemy_targets = SkillSystem.get_valid_enemy_targets(skill_system_context, owner_character)
@@ -171,7 +175,7 @@ func get_potential_targets() -> Array:
 	return targets
 
 # 为特定技能选择合适的目标
-func get_targets_for_skill(skill: SkillData, potential_targets: Array) -> Array:
+func get_targets_for_skill(skill: SkillData, potential_targets: Array[Character]) -> Array[Character]:
 	var valid_targets = []
 	var owner_character = get_parent() as Character
 	# 根据技能目标类型筛选目标
