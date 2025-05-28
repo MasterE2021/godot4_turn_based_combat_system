@@ -274,22 +274,36 @@ func _select_best_target_for_skill(skill: SkillData, valid_targets: Array) -> Ch
 # 获取角色可用的技能列表
 func _get_available_skills() -> Array:
 	var owner_character : Character = get_parent() as Character
-	if not owner_character.skill_component:
+	if not owner_character.skill_component or not owner_character.combat_component:
 		return []
 	
 	var skills : Array = []
+	
+	# 添加基础攻击技能
+	if owner_character.combat_component.attack_skill and _can_use_skill(owner_character.combat_component.attack_skill):
+		skills.append(owner_character.combat_component.attack_skill)
+	
+	# 添加防御技能
+	if owner_character.combat_component.defense_skill and _can_use_skill(owner_character.combat_component.defense_skill):
+		skills.append(owner_character.combat_component.defense_skill)
+	
+	# 添加其他可用技能
 	for skill : SkillData in owner_character.skill_component.get_available_skills():
 		if skill and _can_use_skill(skill):
 			skills.append(skill)
 	
 	return skills
 
-## 检查技能是否可用(冷却、MP等)
+## 检查技能是否可用(状态、冷却、MP等)
 ## [param skill] 技能数据
 ## [return] 是否可用
 func _can_use_skill(skill: SkillData) -> bool:
 	var owner_character : Character = get_parent() as Character
-	if not owner_character.skill_component:
+	if not owner_character.skill_component or not owner_character.combat_component:
+		return false
+	
+	# 检查角色是否可以执行技能动作
+	if not owner_character.combat_component.can_perform_action(CharacterCombatComponent.ActionType.SKILL):
 		return false
 	
 	# 检查MP消耗

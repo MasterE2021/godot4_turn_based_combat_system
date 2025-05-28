@@ -211,7 +211,9 @@ func _open_skill_menu() -> void:
 	var current_character : Character = battle_manager.turn_order_manager.current_character
 	if skill_select_menu and current_character:
 		if current_character and current_character.character_data:
-			skill_select_menu.show_menu(current_character.character_data.skills, current_character)
+			var character_data : CharacterData = current_character.character_data
+			var skills : Array[SkillData] = character_data.skills
+			skill_select_menu.show_menu(skills, current_character)
 		else:
 			update_battle_info("该角色没有技能")
 			_show_action_menu()

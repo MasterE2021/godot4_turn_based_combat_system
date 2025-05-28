@@ -29,7 +29,7 @@ func initialize(attribute_set_resource: SkillAttributeSet, skills: Array[SkillDa
 	# 这是因为AttributeSet本身是一个Resource, 直接使用会导致所有实例共享数据
 	_active_attribute_set = attribute_set_resource.duplicate(true)
 	# 初始化技能列表
-	_skills = skills
+	_skills = skills.duplicate(true)
 	if not _active_attribute_set:
 		push_error("无法初始化AttributeSet，资源无效！")
 		return
