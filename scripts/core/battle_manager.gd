@@ -10,26 +10,26 @@ var visual_effects: BattleVisualEffects
 var combat_rules: CombatRuleManager
 var turn_order_manager: TurnOrderManager					## 回合顺序管理器
 
-## 当前选中的技能
-var current_selected_skill : SkillData = null
-
-var effect_processors = {}		## 效果处理器
+var current_selected_skill : SkillData = null				## 当前选中的技能
+var effect_processors = {}									## 效果处理器
 
 # 信号
-signal turn_changed(character)
-signal battle_ended(is_victory)
-# 添加额外信号用于与UI交互
-signal player_action_required(character) # 通知UI玩家需要行动
-signal enemy_action_executed(attacker, target, damage) # 敌人执行了行动
+signal turn_changed(character)								## 回合变化
+signal battle_ended(is_victory)								## 战斗结束
+signal player_action_required(character)					## 通知UI玩家需要行动
+signal enemy_action_executed(attacker, target, damage)		## 敌人执行了行动
 
 func _ready():
 	_init_core_systems()
-	
 	# 订阅SkillSystem的视觉效果请求信号
 	SkillSystem.visual_effect_requested.connect(_on_visual_effect_requested)
-	
 	_start_battle()
 
+#region --- 获取目标 ---
+## 获取友方角色的合法目标
+## [param caster] 技能施放者
+## [param include_self] 是否包含施放者自己
+## [return] 可以作为目标的友方角色列表
 func get_valid_ally_targets(caster: Character, include_self: bool) -> Array[Character]:
 	var skill_context := SkillSystem.SkillExecutionContext.new(
 		character_registry,
@@ -37,6 +37,9 @@ func get_valid_ally_targets(caster: Character, include_self: bool) -> Array[Char
 	)
 	return SkillSystem.get_valid_ally_targets(skill_context, caster, include_self)
 
+## 获取敌方角色的合法目标
+## [param caster] 技能施放者
+## [return] 可以作为目标的敌方角色列表
 func get_valid_enemy_targets(caster: Character) -> Array[Character]:
 	var skill_context := SkillSystem.SkillExecutionContext.new(
 		character_registry,
@@ -44,9 +47,14 @@ func get_valid_enemy_targets(caster: Character) -> Array[Character]:
 	)
 	return SkillSystem.get_valid_enemy_targets(skill_context, caster)
 
-# 玩家选择行动 - 由BattleScene调用
+## 玩家选择行动 - 由BattleScene调用
+## [param action_type] 动作类型
+## [param target] 动作目标
+## [param params] 额外参数
 func player_select_action(
-		action_type: CharacterCombatComponent.ActionType, target: Character = null, params: Dictionary = {}) -> void:
+		action_type: CharacterCombatComponent.ActionType, 
+		target: Character = null, 
+		params: Dictionary = {}) -> void:
 	if not state_manager.is_in_state(BattleStateManager.BattleState.PLAYER_TURN):
 		return
 		
@@ -61,154 +69,67 @@ func player_select_action(
 	# 行动结束后转入回合结束
 	state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
 
-## 初始化核心系统
-func _init_core_systems() -> void:
-	# 初始化各个核心系统
-	character_registry = BattleCharacterRegistryManager.new()
-	state_manager = BattleStateManager.new()
-	visual_effects = BattleVisualEffects.new()
-	turn_order_manager = TurnOrderManager.new()
-	combat_rules = CombatRuleManager.new()
-	
-	# 添加到场景树
-	add_child(character_registry)
-	add_child(state_manager)
-	add_child(visual_effects)
-	add_child(turn_order_manager)
-	add_child(combat_rules)
-	
-	# 订阅信号
-	state_manager.state_changed.connect(_on_battle_state_changed)
-	turn_order_manager.turn_changed.connect(_on_turn_order_changed)
-	
-	# 设置名称
-	character_registry.name = "BattleCharacterRegistryManager"
-	state_manager.name = "BattleStateManager"
-	visual_effects.name = "VisualEffectsHandler"
-	turn_order_manager.name = "TurnOrderManager"
-	combat_rules.name = "CombatRuleManager"
-	
-	# 初始化
-	character_registry.initialize()
-	turn_order_manager.initialize(character_registry)
-	# 初始化战斗规则管理器
-	combat_rules.initialize(character_registry)
-	visual_effects.initialize(DAMAGE_NUMBER_SCENE)
+#endregion
 
-# 处理战斗状态变化
-## 处理视觉效果请求
-## [param effect_type] 效果类型
-## [param target] 目标节点
-## [param params] 参数字典
-func _on_visual_effect_requested(effect_type: StringName, target: Node, params: Dictionary) -> void:
-	if not visual_effects or not is_instance_valid(target):
+#region --- 执行敌人AI ---
+## 执行敌人回合
+func _execute_enemy_turn() -> void:
+	# 获取当前行动角色
+	var enemy_character : Character = turn_order_manager.current_character
+	if not is_instance_valid(enemy_character):
+		print("ERROR: 无效的敌人角色")
+		state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
 		return
 	
-	# 根据效果类型调用相应的视觉效果方法
-	match effect_type:
-		&"damage":
-			visual_effects.show_normal_damage(target, params)
-		&"effective_hit":
-			visual_effects.show_effective_hit(target, params)
-		&"ineffective_hit":
-			visual_effects.show_ineffective_hit(target, params)
-		&"damage_number":
-			visual_effects.show_damage_number(
-				target, 
-				params.get("damage", 0), 
-				false, 
-				params.get("color", Color.RED), 
-				params.get("prefix", ""),
-				Vector2(0, 50) # 默认偏移
-			)
-		&"heal":
-			visual_effects.show_heal_number(target, params.get("amount", 0))
-		&"status":
-			visual_effects.show_status_text(target, params.get("text", "Status"), params.get("is_positive", true))
-		# &"hit":
-		# 	if target is Character and target.has_method("play_animation"):
-		# 		target.play_animation("hit")
-		# &"cast":
-		# 	if target is Character and target.has_method("play_animation"):
-		# 		target.play_animation("skill")
-		_:
-			push_warning("BattleManager: 未知的视觉效果类型: %s" % effect_type)
-
-## 处理回合顺序变化
-func _on_turn_order_changed(character: Character) -> void:
-	# 处理回合变化
-	print("Turn changed to: %s" % character.character_name)
-	turn_changed.emit(character)
-	
-	# 如果是玩家角色，通知UI玩家需要行动
-	if character_registry.is_player_character(character):
-		state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
+	# 检查角色是否有AI组件
+	var ai_component = enemy_character.ai_component
+	if not ai_component:
+		print_rich("[color=orange]角色没有AI组件，使用默认攻击[/color]")
+		# 执行默认攻击
+		state_manager.change_state(BattleStateManager.BattleState.ACTION_EXECUTION)
+		var result = await _execute_action(
+			CharacterCombatComponent.ActionType.ATTACK, 
+			enemy_character, 
+			_get_default_target(enemy_character), 
+			{}
+		)
+		var damage = result.get("damage", 0)
+		enemy_action_executed.emit(enemy_character, _get_default_target(enemy_character), damage)
 	else:
-		# 如果是敌人，转到敌人回合状态
-		state_manager.change_state(BattleStateManager.BattleState.ENEMY_TURN)
-
-func _on_battle_state_changed(old_state, new_state):
-	print("战斗状态变化: ", state_manager.get_state_name(old_state), " -> ", state_manager.get_state_name(new_state))
-	
-	match new_state:
-		BattleStateManager.BattleState.BATTLE_START:
-			print("战斗开始初始化...")
-			# 战斗初始化
-			turn_order_manager.build_queue()
-			await get_tree().create_timer(1.0).timeout
-			state_manager.change_state(BattleStateManager.BattleState.ROUND_START)
-			
-		BattleStateManager.BattleState.ROUND_START:
-			print("回合开始...")
-			# 回合开始处理，确定行动者
-			_next_turn()
-			#TODO 重置当前回合角色标记
-			
-		BattleStateManager.BattleState.PLAYER_TURN:
-			# 通知UI需要玩家输入
-			print("玩家回合：等待输入...")
-			player_action_required.emit(turn_order_manager.current_character)
+		# 执行AI行动
+		state_manager.change_state(BattleStateManager.BattleState.ACTION_EXECUTION)
+		var action_result = await ai_component.execute_action()
 		
-		BattleStateManager.BattleState.ENEMY_TURN:
-			# 执行敌人AI
-			print("敌人回合：", turn_order_manager.current_character.character_name, " 思考中...")
-			# 延迟一下再执行AI，避免敌人行动过快
-			await get_tree().create_timer(1.0).timeout
-			_execute_enemy_ai()
-			
-		BattleStateManager.BattleState.ROUND_END:
-			print("回合结束...")
-			# 处理回合结束效果
-			await get_tree().create_timer(0.5).timeout
-			
-			# 调用当前角色的回合结束方法，更新状态效果持续时间
-			await _update_current_character_turn_end()
-			
-			# 检查战斗是否结束
-			var is_battle_ended = combat_rules.check_battle_end_conditions()
-			if is_battle_ended:
-				state_manager.change_state(BattleStateManager.BattleState.VICTORY if character_registry.is_team_defeated(false) else BattleStateManager.BattleState.DEFEAT)
-			else:
-				state_manager.change_state(BattleStateManager.BattleState.ROUND_START)
-			
-		BattleStateManager.BattleState.VICTORY:
-			print("胜利!")
-			# 处理胜利后的逻辑
-			battle_ended.emit(true)
+		# 如果AI无法决策或执行失败，直接结束回合
+		if not action_result or not action_result.is_valid:
+			print_rich("[color=orange]AI行动失败，跳过回合[/color]")
+		else:
+			# 发送敌人行动执行信号
+			enemy_action_executed.emit(action_result.source, action_result.target, action_result.damage)
+	
+	# 等待一段时间后结束回合
+	await get_tree().create_timer(1.0).timeout
+	state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
 
-		BattleStateManager.BattleState.DEFEAT:
-			print("失败!")
-			# 处理失败后的逻辑
-			battle_ended.emit(false)
-			
-		BattleStateManager.BattleState.ACTION_EXECUTION:
-			# 执行选择的行动
-			# 这部分通常在选择行动后直接调用_execute_action
-			print("执行选择的行动...")
-			
-			# TODO: 实现_execute_action逻辑
+## 获取默认目标（当AI组件不可用时）
+func _get_default_target(source_character: Character) -> Character:
+	# 获取敌人列表
+	var enemies = []
+	for character in character_registry.get_all_characters():
+		if character_registry.is_enemy_of(source_character, character):
+			enemies.append(character)
+	
+	# 如果有敌人，选择第一个
+	if not enemies.is_empty():
+		return enemies[0]
+	
+	# 如果没有敌人，返回自己（应该不会发生）
+	return source_character
 
-# 注册战斗场景中的角色
+#endregion
+
+#region --- 注册角色 ---
+## 注册战斗场景中的角色
 func _register_characters() -> void:
 	# 查找战斗场景中的所有角色
 	var player_area = get_node_or_null("../PlayerArea")
@@ -228,7 +149,7 @@ func _register_characters() -> void:
 	
 	print("已注册 ", character_registry.get_player_team(true).size(), " 名玩家角色和 ", character_registry.get_enemy_team(false).size(), " 名敌人")
 
-# 开始战斗
+## 开始战斗
 func _start_battle() -> void:
 	print("战斗开始!")
 
@@ -247,13 +168,7 @@ func _subscribe_to_character_signals(character : Character) -> void:
 		character.character_defeated.connect(_on_character_defeated)
 	#TODO 链接其他信号
 
-# 角色死亡信号处理函数
-func _on_character_defeated(character: Character) -> void:
-	print_rich("[color=purple]" + character.character_name + " 已被击败![/color]")
-	# 检查战斗是否结束
-	combat_rules.check_battle_end_conditions()
-
-# 下一个回合
+## 下一个回合
 func _next_turn() -> void:
 	var next_character = turn_order_manager.get_next_character()
 	
@@ -296,41 +211,6 @@ func _can_character_act(character: Character) -> bool:
 	var restricted_tags = character.skill_component.get_restricted_action_tags()
 	return not restricted_tags.has(&"any_action")
 
-# 执行敌人AI
-func _execute_enemy_ai() -> void:
-	var enemy_character = turn_order_manager.current_character
-	if not enemy_character or character_registry.is_player_character(enemy_character):
-		push_error("Invalid enemy character for AI execution")
-		return
-	
-	# 再次检查敌人是否可以行动（可能在进入敌人回合后状态发生变化）
-	if not _can_character_act(enemy_character):
-		print_rich("[color=orange]%s 无法行动，自动跳过回合[/color]" % enemy_character.character_name)
-		state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
-		return
-	
-	# 简单AI：随机选择一个玩家角色攻击
-	var valid_targets = get_valid_enemy_targets(enemy_character)
-	if valid_targets.is_empty():
-		print("敌人没有有效目标，跳过行动")
-		state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
-		return
-	
-	# 随机选择一个目标
-	var target = valid_targets[randi() % valid_targets.size()]
-	
-	# 执行基本攻击
-	state_manager.change_state(BattleStateManager.BattleState.ACTION_EXECUTION)
-	var result = await _execute_action(CharacterCombatComponent.ActionType.ATTACK, enemy_character, target)
-	var damage = result.get("damage", 0)
-	
-	# 发送敌人行动执行信号
-	enemy_action_executed.emit(enemy_character, target, damage)
-	
-	# 等待一段时间后结束回合
-	await get_tree().create_timer(1.0).timeout
-	state_manager.change_state(BattleStateManager.BattleState.ROUND_END)
-
 ## 更新当前角色的回合结束状态
 func _update_current_character_turn_end() -> void:
 	var current_character = turn_order_manager.current_character
@@ -344,7 +224,11 @@ func _update_current_character_turn_end() -> void:
 ## [param target] 动作目标
 ## [param params] 额外参数（如技能数据、道具数据等）
 ## [return] 动作执行结果
-func _execute_action(action_type: CharacterCombatComponent.ActionType, source: Character, target : Character = null, params : Dictionary = {}) -> Dictionary:
+func _execute_action(
+		action_type: CharacterCombatComponent.ActionType, 
+		source: Character, 
+		target : Character = null, 
+		params : Dictionary = {}) -> Dictionary:
 	if not is_instance_valid(source):
 		push_error("无效的动作执行者")
 		return {"success": false, "error": "无效的动作执行者"}
@@ -361,3 +245,170 @@ func _execute_action(action_type: CharacterCombatComponent.ActionType, source: C
 	combat_rules.check_battle_end_conditions()
 	
 	return result
+
+## 初始化核心系统
+func _init_core_systems() -> void:
+	# 初始化各个核心系统
+	character_registry = BattleCharacterRegistryManager.new()
+	state_manager = BattleStateManager.new()
+	visual_effects = BattleVisualEffects.new()
+	turn_order_manager = TurnOrderManager.new()
+	combat_rules = CombatRuleManager.new()
+	
+	# 添加到场景树
+	add_child(character_registry)
+	add_child(state_manager)
+	add_child(visual_effects)
+	add_child(turn_order_manager)
+	add_child(combat_rules)
+	
+	# 订阅信号
+	state_manager.state_changed.connect(_on_battle_state_changed)
+	turn_order_manager.turn_changed.connect(_on_turn_order_changed)
+	
+	# 设置名称
+	character_registry.name = "BattleCharacterRegistryManager"
+	state_manager.name = "BattleStateManager"
+	visual_effects.name = "VisualEffectsHandler"
+	turn_order_manager.name = "TurnOrderManager"
+	combat_rules.name = "CombatRuleManager"
+	
+	# 初始化
+	character_registry.initialize()
+	turn_order_manager.initialize(character_registry)
+	# 初始化战斗规则管理器
+	combat_rules.initialize(character_registry)
+	visual_effects.initialize(DAMAGE_NUMBER_SCENE)
+	character_registry.character_registered.connect(_on_character_registered)
+
+#endregion
+
+#region --- 角色注册处理 ---
+## 角色注册处理
+## [param character] 注册的角色
+func _on_character_registered(character: Character) -> void:
+	character.initialize(self)
+
+## 角色死亡信号处理函数
+func _on_character_defeated(character: Character) -> void:
+	print_rich("[color=purple]" + character.character_name + " 已被击败![/color]")
+	# 检查战斗是否结束
+	combat_rules.check_battle_end_conditions()
+
+# 处理战斗状态变化
+## 处理视觉效果请求
+## [param effect_type] 效果类型
+## [param target] 目标节点
+## [param params] 参数字典
+func _on_visual_effect_requested(effect_type: StringName, target: Node, params: Dictionary) -> void:
+	if not visual_effects or not is_instance_valid(target):
+		return
+	
+	# 根据效果类型调用相应的视觉效果方法
+	match effect_type:
+		&"damage":
+			visual_effects.show_normal_damage(target, params)
+		&"effective_hit":
+			visual_effects.show_effective_hit(target, params)
+		&"ineffective_hit":
+			visual_effects.show_ineffective_hit(target, params)
+		&"damage_number":
+			visual_effects.show_damage_number(
+				target, 
+				params.get("damage", 0), 
+				false, 
+				params.get("color", Color.RED), 
+				params.get("prefix", ""),
+				Vector2(0, 50) # 默认偏移
+			)
+		&"heal":
+			visual_effects.show_heal_number(target, params.get("amount", 0))
+		&"status":
+			visual_effects.show_status_text(target, params.get("text", "Status"), params.get("is_positive", true))
+		# &"hit":
+		# 	if target is Character and target.has_method("play_animation"):
+		# 		target.play_animation("hit")
+		# &"cast":
+		# 	if target is Character and target.has_method("play_animation"):
+		# 		target.play_animation("skill")
+		_:
+			push_warning("BattleManager: 未知的视觉效果类型: %s" % effect_type)
+
+## 处理回合顺序变化
+## [param character] 当前回合角色
+func _on_turn_order_changed(character: Character) -> void:
+	# 处理回合变化
+	print("Turn changed to: %s" % character.character_name)
+	turn_changed.emit(character)
+	
+	# 如果是玩家角色，通知UI玩家需要行动
+	if character_registry.is_player_character(character):
+		state_manager.change_state(BattleStateManager.BattleState.PLAYER_TURN)
+	else:
+		# 如果是敌人，转到敌人回合状态
+		state_manager.change_state(BattleStateManager.BattleState.ENEMY_TURN)
+
+## 处理战斗状态变化
+## [param old_state] 旧状态
+## [param new_state] 新状态
+func _on_battle_state_changed(old_state, new_state):
+	print("战斗状态变化: ", state_manager.get_state_name(old_state), " -> ", state_manager.get_state_name(new_state))
+	
+	match new_state:
+		BattleStateManager.BattleState.BATTLE_START:
+			print("战斗开始初始化...")
+			# 战斗初始化
+			turn_order_manager.build_queue()
+			await get_tree().create_timer(1.0).timeout
+			state_manager.change_state(BattleStateManager.BattleState.ROUND_START)
+			
+		BattleStateManager.BattleState.ROUND_START:
+			print("回合开始...")
+			# 回合开始处理，确定行动者
+			_next_turn()
+			#TODO 重置当前回合角色标记
+			
+		BattleStateManager.BattleState.PLAYER_TURN:
+			# 通知UI需要玩家输入
+			print("玩家回合：等待输入...")
+			player_action_required.emit(turn_order_manager.current_character)
+		
+		BattleStateManager.BattleState.ENEMY_TURN:
+			# 执行敌人AI
+			print("敌人回合：", turn_order_manager.current_character.character_name, " 思考中...")
+			# 延迟一下再执行AI，避免敌人行动过快
+			await get_tree().create_timer(1.0).timeout
+			await _execute_enemy_turn()
+			
+		BattleStateManager.BattleState.ROUND_END:
+			print("回合结束...")
+			# 处理回合结束效果
+			await get_tree().create_timer(0.5).timeout
+			
+			# 调用当前角色的回合结束方法，更新状态效果持续时间
+			await _update_current_character_turn_end()
+			
+			# 检查战斗是否结束
+			var is_battle_ended = combat_rules.check_battle_end_conditions()
+			if is_battle_ended:
+				state_manager.change_state(BattleStateManager.BattleState.VICTORY if character_registry.is_team_defeated(false) else BattleStateManager.BattleState.DEFEAT)
+			else:
+				state_manager.change_state(BattleStateManager.BattleState.ROUND_START)
+			
+		BattleStateManager.BattleState.VICTORY:
+			print("胜利!")
+			# 处理胜利后的逻辑
+			battle_ended.emit(true)
+
+		BattleStateManager.BattleState.DEFEAT:
+			print("失败!")
+			# 处理失败后的逻辑
+			battle_ended.emit(false)
+			
+		BattleStateManager.BattleState.ACTION_EXECUTION:
+			# 执行选择的行动
+			# 这部分通常在选择行动后直接调用_execute_action
+			print("执行选择的行动...")
+			
+			# TODO: 实现_execute_action逻辑
+#endregion

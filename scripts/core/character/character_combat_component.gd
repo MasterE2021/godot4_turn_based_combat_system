@@ -44,14 +44,10 @@ func initialize(p_element: int, p_attack_skill: SkillData, p_defense_skill: Skil
 	attack_skill = p_attack_skill
 	defense_skill = p_defense_skill
 	
-	# 连接技能组件的动作标签变化信号
-	if _skill_component:
-		_skill_component.action_tags_changed.connect(_on_action_tags_changed)
-	if not _skill_component:
-		push_error("无法找到技能组件！")
-		return
-	
+	_skill_component.action_tags_changed.connect(_on_action_tags_changed)
 	_skill_component.attribute_current_value_changed.connect(_on_attribute_current_value_changed)
+	_skill_component.add_skill(attack_skill)
+	_skill_component.add_skill(defense_skill)
 
 ## 执行动作
 ## [param action_type] 动作类型

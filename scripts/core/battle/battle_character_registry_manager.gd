@@ -188,6 +188,10 @@ func get_opposing_team_for_character(character: Character) -> Array[Character]:
 		# 敌人角色的敌人是玩家队伍
 		return get_player_team(true)
 
+## 判断是否为敌人
+func is_enemy_of(character: Character, target: Character) -> bool:
+	return target in get_opposing_team_for_character(character)
+
 #region --- 信号处理 ---
 ## 当角色被击败时自动反注册
 ## [param defeated_character] 被击败的角色

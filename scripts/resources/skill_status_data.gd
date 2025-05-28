@@ -70,16 +70,14 @@ enum StatusType {
 @export var restricted_action_categories: Array[StringName] = []
 
 # --- 运行时变量 (在 duplicate(true) 后由 character.gd 设置和管理) ---
-var source_character: Character   													## 施加此状态的角色
-var target_character: Character   													## 拥有此状态的角色 (方便状态效果内部逻辑访问目标)
-var remaining_duration: int       													## 剩余持续时间
+var source_character: Character   												## 施加此状态的角色
+var target_character: Character   												## 拥有此状态的角色 (方便状态效果内部逻辑访问目标)
+var remaining_duration: int       												## 剩余持续时间
 var stacks: int = 1          													## 当前叠加层数
 var is_permanent: bool: 
 	get: return duration_type == DurationType.INFINITE
-## 本回合触发次数
-var current_turn_trigger_count: int = 0
-## 触发总数
-var current_total_trigger_count: int = 0
+var current_turn_trigger_count: int = 0											## 本回合触发次数
+var current_total_trigger_count: int = 0										## 触发总数
 
 #region --- 方法 ---
 func _init(): 

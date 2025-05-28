@@ -149,7 +149,7 @@ func has_enough_mp_for_skill(skill: SkillData) -> bool:
 
 ## 获取所有技能
 ## [return] 技能数据数组
-func get_skills() -> Array[SkillData]:
+func get_available_skills() -> Array[SkillData]:
 	return _skills
 
 ## 添加技能
