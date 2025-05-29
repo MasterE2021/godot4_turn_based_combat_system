@@ -13,6 +13,7 @@ class_name Character
 # 组件引用
 @onready var combat_component: CharacterCombatComponent = %CharacterCombatComponent
 @onready var skill_component: CharacterSkillComponent = %CharacterSkillComponent
+@onready var ai_component: CharacterAIComponent = %CharacterAIComponent
 
 #region --- 常用属性的便捷Getter ---
 var current_hp: float:
@@ -47,12 +48,12 @@ var character_name : StringName:
 	set(value): assert(false, "cannot set character_name")
 #endregion
 
-@export var character_data: CharacterData
+@export var character_data: CharacterData			## 角色数据
 
 # 属性委托给战斗组件
 var is_alive : bool = true:							## 生存状态标记
 	get: return current_hp > 0
-var element: int:
+var element: int:									## 元素类型
 	get : return combat_component.element
 
 # 信号 - 这些信号将转发组件的信号
@@ -67,9 +68,11 @@ func _ready() -> void:
 	# 初始化防御指示器
 	defense_indicator.visible = false
 	
+## 初始化角色
+func initialize(battle_manager: BattleManager) -> void:
 	# 初始化角色数据
 	if character_data:
-		_initialize_from_data(character_data)
+		_initialize_from_data(character_data, battle_manager)
 	else:
 		push_error("角色场景 " + name + " 没有分配CharacterData!")
 	
@@ -83,6 +86,10 @@ func _ready() -> void:
 
 	print("%s initialized. HP: %.1f/%.1f, Attack: %.1f" % [character_data.character_name, current_hp, max_hp, attack_power])
 
+## 执行行动
+## [param action_type] 行动类型
+## [param target] 目标角色
+## [param params] 行动参数
 func execute_action(action_type: CharacterCombatComponent.ActionType, target : Character = null, params : Dictionary = {}) -> Dictionary:
 	if combat_component:
 		return await combat_component.execute_action(action_type, target, params)
@@ -226,7 +233,7 @@ func _on_character_defeated():
 #endregion
 
 ## 初始化组件
-func _init_components() -> void:
+func _init_components(battle_manager: BattleManager) -> void:
 	if not combat_component:
 		push_error("战斗组件未初始化！")
 		return
@@ -255,8 +262,10 @@ func _init_components() -> void:
 	skill_component.attribute_base_value_changed.connect(_on_attribute_base_value_changed)
 	skill_component.attribute_current_value_changed.connect(_on_attribute_current_value_changed)
 
+	ai_component.initialize(battle_manager)
+
 ## 初始化玩家数据
-func _initialize_from_data(data: CharacterData):
+func _initialize_from_data(data: CharacterData, battle_manager: BattleManager) -> void:
 	# 保存数据引用
 	character_data = data
 	
@@ -264,4 +273,4 @@ func _initialize_from_data(data: CharacterData):
 	print(character_name + " 初始化完毕，HP: " + str(current_hp) + "/" + str(max_hp))
 	
 	# 初始化组件
-	_init_components()
+	_init_components(battle_manager)

@@ -9,9 +9,6 @@ var _effect_processors: Dictionary[StringName, EffectProcessor] = {}
 ## 当前选中的技能 (如果需要由 SkillSystem 管理选择状态)
 var current_selected_skill : SkillData = null
 
-# 当前事件上下文
-var _current_event_context: Dictionary = {}
-
 # 信号
 signal skill_execution_started(caster: Character, skill: SkillData, targets: Array[Character])
 signal skill_execution_completed(caster: Character, skill: SkillData, targets: Array[Character], results: Dictionary) # results 可以包含伤害、治疗、状态等信息
@@ -57,24 +54,13 @@ func register_effect_processor(processor: EffectProcessor) -> void:
 ## [param event_type] 事件类型，如 "on_damage_taken", "on_turn_start", "on_attack" 等
 ## [param context] 事件上下文，包含事件相关的所有信息
 func trigger_game_event(event_type: StringName, context: Dictionary) -> void:
-	# 存储当前事件上下文
-	_current_event_context = context.duplicate()
-	_current_event_context["event_type"] = event_type
-	
 	# 发出游戏事件信号
 	game_event_occurred.emit(event_type, context)
 	
 	# 打印事件日志（调试用）
 	print_rich("[color=purple]游戏事件触发: %s[/color]" % event_type)
-	
 	# 事件处理完成后清空上下文
 	await get_tree().process_frame
-	_current_event_context = {}
-
-## 获取当前事件上下文
-## [return] 当前事件上下文字典
-func get_current_event_context() -> Dictionary:
-	return _current_event_context
 
 ## 应用效果集
 ## [param source_character] 效果来源角色
@@ -83,7 +69,12 @@ func get_current_event_context() -> Dictionary:
 ## [param skill_data] 可选的技能数据
 ## [param context] 执行上下文，包含额外信息
 ## [return] 效果应用结果
-func apply_effects(source_character: Character, target_character: Character, effects: Array[SkillEffectData], skill_data: SkillData = null, context: Dictionary = {}) -> Dictionary:
+func apply_effects(
+		source_character: Character, 
+		target_character: Character, 
+		effects: Array[SkillEffectData], 
+		skill_data: SkillData = null, 
+		context: Dictionary = {}) -> Dictionary:
 	var results = {}
 	
 	if not is_instance_valid(source_character) or not is_instance_valid(target_character):
@@ -128,7 +119,14 @@ func attempt_execute_skill(context: SkillExecutionContext, caster: Character, sk
 	return true
 
 ## 获取有效的友方目标
-func get_valid_ally_targets(context: SkillExecutionContext, caster: Character, include_self: bool) -> Array[Character]:
+## [param context] 技能执行上下文
+## [param caster] 施法者
+## [param include_self] 是否包含施法者自己
+## [return] 可以作为目标的友方角色列表
+func get_valid_ally_targets(
+		context: SkillExecutionContext, 
+		caster: Character, 
+		include_self: bool) -> Array[Character]:
 	var allies = context.character_registry.get_allied_team_for_character(caster, include_self)
 	var valid_targets: Array[Character] = []
 	for ally in allies:
@@ -137,7 +135,12 @@ func get_valid_ally_targets(context: SkillExecutionContext, caster: Character, i
 	return valid_targets
 
 ## 获取有效的敌方目标
-func get_valid_enemy_targets(context: SkillExecutionContext, caster: Character) -> Array[Character]:
+## [param context] 技能执行上下文
+## [param caster] 施法者
+## [return] 可以作为目标的敌方角色列表
+func get_valid_enemy_targets(
+		context: SkillExecutionContext, 
+		caster: Character) -> Array[Character]:
 	var enemies = context.character_registry.get_opposing_team_for_character(caster)
 	var valid_targets: Array[Character] = []
 	for enemy in enemies:

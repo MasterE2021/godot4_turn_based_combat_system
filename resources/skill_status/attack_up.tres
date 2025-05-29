@@ -30,5 +30,7 @@ overrides_states = Array[StringName]([])
 resisted_by_states = Array[StringName]([])
 trigger_on_events = Array[StringName]([])
 trigger_effects = Array[ExtResource("2_7cgdo")]([])
+trigger_turns = 1
+trigger_count = 1
 restricted_action_categories = Array[StringName]([])
 metadata/_custom_type_script = "uid://do7l16ao2ut6t"
