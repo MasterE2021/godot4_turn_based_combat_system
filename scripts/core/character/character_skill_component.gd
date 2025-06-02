@@ -73,8 +73,8 @@ func get_attribute_modifiers(attribute_name: StringName) -> Array[SkillAttribute
 	return _active_attribute_set.get_attribute_modifiers(attribute_name)
 
 ## 获取属性实例
-func get_attribute_instance(attribute_name: StringName) -> SkillAttribute:
-	return _active_attribute_set.get_attribute_instance(attribute_name)
+func get_attribute(attribute_name: StringName) -> SkillAttribute:
+	return _active_attribute_set.get_attribute(attribute_name)
 
 ## 获取AttributeSet
 func get_attribute_set() -> SkillAttributeSet:
@@ -119,18 +119,45 @@ func attempt_execute_skill(skill_data: SkillData, selected_targets: Array[Charac
 	# 播放攻击动画
 	if not skill_data.cast_animation.is_empty():
 		await caster.play_animation(skill_data.cast_animation)
+	
+	# 连接信号以捕获伤害值
+	var damage_result : Dictionary = {}
+	var damage_signal_connection = null
+	
+	# 创建一个临时函数来捕获伤害值
+	var capture_damage = func(effect_type, _source, _target, effect_result):
+		if effect_type == SkillEffectData.EffectType.DAMAGE and effect_result.has("damage"):
+			damage_result["damage"] += effect_result["damage"]
+			print_rich("[color=yellow]捕获到伤害值: %d[/color]" % effect_result["damage"])
+	
+	# 连接信号
+	damage_signal_connection = SkillSystem.effect_processed.connect(capture_damage)
+	
 	# 调用SkillSystem的相应方法
 	var success := SkillSystem.attempt_execute_skill(context, caster, skill_data, selected_targets)
+	
 	# 构建结果字典
 	var result = {
 		"success": success,
 		"skill": skill_data,
-		"targets": selected_targets
+		"targets": selected_targets,
+		"damage": 0  # 默认伤害值为0
 	}
 	
 	# 如果成功，等待一帧以确保效果处理开始
 	if success and Engine.get_main_loop():
 		await Engine.get_main_loop().process_frame
+		# 等待额外的时间以确保所有效果处理完成
+		await get_tree().create_timer(0.2).timeout
+	
+	# 断开信号连接
+	if damage_signal_connection:
+		SkillSystem.effect_processed.disconnect(damage_signal_connection)
+	
+	# 设置最终伤害值
+	var damage_value : float = damage_result.get("damage", 0)
+	result["damage"] = damage_value
+	print_rich("[color=green]最终伤害值: %d[/color]" % damage_value)
 	
 	return result
 
@@ -335,6 +362,14 @@ func get_status_stacks(status_id: StringName) -> int:
 	if not _active_statuses.has(status_id):
 		return 0
 	return _active_statuses[status_id].stacks
+
+## 获取所有当前活跃的状态效果
+## [return] 所有当前活跃的状态效果数组
+func get_all_active_statuses() -> Array[SkillStatusData]:
+	var result: Array[SkillStatusData] = []
+	for status_id in _active_statuses:
+		result.append(_active_statuses[status_id])
+	return result
 #endregion
 
 #region --- 私有方法 ---
@@ -559,6 +594,8 @@ func process_turn_start() -> void:
 	# 移除过期状态
 	for status_id in expired_status_ids:
 		remove_status(status_id)
+		
+	await get_tree().process_frame
 #endregion
 
 func _on_attribute_base_value_changed(attribute_instance: SkillAttribute, _old_value: float, _new_value: float, _source: Variant):
