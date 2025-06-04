@@ -1,8 +1,8 @@
 [gd_resource type="Resource" script_class="SkillData" load_steps=6 format=3 uid="uid://vy8g8r128hbr"]
 
-[ext_resource type="Script" uid="uid://dxb4kwdmaswyl" path="res://scripts/resources/skill_effect_data.gd" id="1_rpyuj"]
+[ext_resource type="Script" path="res://scripts/resources/skill_effect_data.gd" id="1_rpyuj"]
 [ext_resource type="Resource" uid="uid://nb7w4k0528xl" path="res://resources/skill_status/stun.tres" id="2_rpyuj"]
-[ext_resource type="Script" uid="uid://dd0peyl7nmqfg" path="res://scripts/resources/skill_data.gd" id="3_a21mc"]
+[ext_resource type="Script" path="res://scripts/resources/skill_data.gd" id="3_a21mc"]
 
 [sub_resource type="Resource" id="Resource_s313m"]
 script = ExtResource("1_rpyuj")
